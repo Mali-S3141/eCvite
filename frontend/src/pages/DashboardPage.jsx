@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect,useCallback, useState } from 'react';
 import { Box, Button, Container, Paper, Typography } from '@mui/material';
 import DataTable from '../components/DataTable';
 import ExcelImport from '../components/ExcelImport';
@@ -25,7 +25,10 @@ export default function DashboardPage() {
   const [ setSelectedRows] = useState([]);
   const user = getLoggedUser();
 
-  const loadRecords = async () => {
+
+
+  
+  const loadRecords = useCallback(async () => {
     if (!user?.phone) {
       setRecords([]);
       setLoading(false);
@@ -43,7 +46,7 @@ export default function DashboardPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [user?.phone]);
 
   useEffect(() => {
     loadRecords();
