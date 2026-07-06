@@ -22,7 +22,7 @@ export default function DashboardPage() {
   const [records, setRecords] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [selectedRows, setSelectedRows] = useState([]);
+  const [ setSelectedRows] = useState([]);
   const user = getLoggedUser();
 
   const loadRecords = async () => {
@@ -47,7 +47,7 @@ export default function DashboardPage() {
 
   useEffect(() => {
     loadRecords();
-  }, []);
+  }, [loadRecords]);
 
   const handleSave = async (updatedRows) => {
     if (!user?.phone) return;
