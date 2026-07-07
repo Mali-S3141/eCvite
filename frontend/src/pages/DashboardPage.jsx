@@ -3,6 +3,8 @@ import { Box, Button, Container, Paper, Typography } from '@mui/material';
 import DataTable from '../components/DataTable';
 import ExcelImport from '../components/ExcelImport';
 import api from '../services/api';
+import PrintModal from '../components/PrintModal'; // ייבוא המודאל החדש
+
 
 function getLoggedUser() {
   const raw = localStorage.getItem('user');
@@ -24,6 +26,7 @@ export default function DashboardPage() {
   const [error, setError] = useState('');
   const [selectedRows, setSelectedRows] = useState([]);
   const user = getLoggedUser();
+  const [isPrintModalOpen, setIsPrintModalOpen] = useState(false); // סטייט לפתיחת המודאל
 
   const loadRecords = async () => {
     if (!user?.phone) {
@@ -47,6 +50,15 @@ export default function DashboardPage() {
 
   useEffect(() => {
     loadRecords();
+  }, []);
+  // 🌟 ה-useEffect החדש שאת מוסיפה ממש כאן מתחתיו:
+  useEffect(() => {
+    const cameFromPreview = sessionStorage.getItem('fromPreview');
+    
+    if (cameFromPreview === 'true') {
+      setIsPrintModalOpen(true); // פותח את המודאל רק אם חזרנו מהתצוגה המקדימה
+      sessionStorage.removeItem('fromPreview'); // מוחק את הסימן מיד כדי שלא יציק שוב
+    }
   }, []);
 
   const handleSave = async (updatedRows) => {
@@ -96,7 +108,7 @@ export default function DashboardPage() {
       )}
 
       <Paper sx={{ p: 2, mb: 3 }}>
-        <ExcelImport onImport={handleImport} />
+        <ExcelImport onImport={handleImport} onOpenPrint={() => setIsPrintModalOpen(true)} />
       </Paper>
 
       <DataTable
@@ -106,9 +118,15 @@ export default function DashboardPage() {
         onSelectionChange={setSelectedRows}
       />
 
+      {/* רנדור המודאל והעברת הרשומות המסומנות אליו */}
+      <PrintModal 
+        open={isPrintModalOpen} 
+        onClose={() => setIsPrintModalOpen(false)} 
+        selectedRows={selectedRows} 
+      />
+
       <Box mt={3} display="flex" justifyContent="flex-end" gap={2}>
         <Button variant="contained">הדפס רשומות</Button>
-        <Button variant="outlined">הדפס מדבקות</Button>
       </Box>
     </Container>
   );
