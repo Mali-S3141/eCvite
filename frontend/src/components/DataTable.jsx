@@ -19,11 +19,10 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
   const [sortModel, setSortModel] = useState([]);
   const [activeFilters, setActiveFilters] = useState([]);
   const [inputValue, setInputValue] = useState('');
-  
-  
+
 
   useEffect(() => {
-    setRows(records);
+    setRows(records)
   }, [records]);
 
  const handleSaveClick = () => {

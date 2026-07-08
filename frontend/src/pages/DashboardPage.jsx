@@ -155,9 +155,8 @@ export default function DashboardPage() {
       {/* רנדור המודאל והעברת הרשומות המסומנות אליו */}
       <PrintModal 
         open={isPrintModalOpen} 
-        onClose={() => setIsPrintModalOpen(false)} 
-        selectedRows={selectedRows} 
-        
+        onClose={() => setIsPrintModalOpen(false)}
+        selectedRows={selectedRows}
       />
 
       <Box mt={3} display="flex" justifyContent="flex-end" gap={2}>
