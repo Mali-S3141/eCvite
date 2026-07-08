@@ -14,7 +14,7 @@
     <packaging>jar</packaging>
 
     <properties>
-        <java.version>21</java.version>
+        <java.version>17</java.version>
         <spring.boot.version>3.2.5</spring.boot.version>
     </properties>
 
@@ -69,6 +69,14 @@
     </dependencyManagement>
 
     <build>
+        <sourceDirectory>backend/src/main/java</sourceDirectory>
+        <testSourceDirectory>backend/src/test/java</testSourceDirectory>
+        <directory>backend/target</directory>
+        <resources>
+            <resource>
+                <directory>backend/src/main/resources</directory>
+            </resource>
+        </resources>
         <plugins>
             <plugin>
                 <groupId>org.springframework.boot</groupId>

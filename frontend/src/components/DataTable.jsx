@@ -3,15 +3,36 @@ import { Box, Button, Paper, Stack, Typography, TextField, Chip } from '@mui/mat
 import { DataGrid, GridToolbar } from '@mui/x-data-grid';
 
 const defaultColumns = [
-  { field: 'name', headerName: 'שם', width: 180, editable: true },
+  { field: 'prefix', headerName: 'קידומת', width: 100, editable: true },
+  { field: 'man', headerName: 'בעל', width: 150, editable: true },
+  { field: 'woman', headerName: 'אישה', width: 150, editable: true },
+  { field: 'lastName', headerName: 'שם משפחה', width: 150, editable: true },
+  { field: 'suffix', headerName: 'סיומת', width: 100, editable: true },
+  { field: 'fatherName', headerName: 'שם האב', width: 150, editable: true },
+  { field: 'motherName', headerName: 'שם האם', width: 150, editable: true },
   { field: 'phone', headerName: 'טלפון', width: 150, editable: true },
+  { field: 'mail', headerName: 'מייל', width: 200, editable: true },
+  { field: 'country', headerName: 'מדינה', width: 120, editable: true },
   { field: 'city', headerName: 'עיר', width: 140, editable: true },
-  { field: 'neighborhood', headerName: 'שכונה', width: 150, editable: true },
   { field: 'street', headerName: 'רחוב', width: 150, editable: true },
-  { field: 'houseNumber', headerName: 'מס\' בית', width: 120, editable: true },
-  { field: 'address', headerName: 'כתובת', width: 220, editable: true },
-  { field: 'email', headerName: 'מייל', width: 220, editable: true },
+  { field: 'houseNo', headerName: 'מס\' בית', width: 100, editable: true },
+  { field: 'belongsTo', headerName: 'שייך ל', width: 150, editable: true },
+  { field: 'display', headerName: 'תצוגה', width: 180, editable: true },
+  { field: 'print', headerName: 'הדפסה', width: 100, editable: true, type: 'boolean' },
+  { field: 'hashCode', headerName: 'מפתח', width: 120, editable: false },
+  { field: 'changed', headerName: 'שונה', width: 100, editable: false, type: 'boolean' },
+  { field: 'changeDate', headerName: 'תאריך שינוי', width: 130, editable: false },
+  { field: 'changeBy', headerName: 'שונה ע"י', width: 130, editable: false },
+  { field: 'createdBy', headerName: 'נוצר ע"י', width: 130, editable: false },
 ];
+
+const SYSTEM_FIELDS_HIDDEN_BY_DEFAULT = {
+  hashCode: false,
+  changed: false,
+  changeDate: false,
+  changeBy: false,
+  createdBy: false,
+};
 
 export default function DataTable({ records, loading, onSave, onAutoSave, onSelectionChange }) {
   const [rows, setRows] = useState(records);
@@ -33,14 +54,22 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
     const nextId = rows.length ? Math.max(...rows.map((row) => row.id || 0)) + 1 : 1;
     const newRow = {
       id: nextId,
-      name: '',
+      prefix: '',
+      man: '',
+      woman: '',
+      lastName: '',
+      suffix: '',
+      fatherName: '',
+      motherName: '',
       phone: '',
+      mail: '',
+      country: '',
       city: '',
-      neighborhood: '',
       street: '',
-      houseNumber: '',
-      address: '',
-      email: '',
+      houseNo: '',
+      belongsTo: '',
+      display: '',
+      print: false,
     };
     setRows((prevRows) => [newRow, ...prevRows]);
 
@@ -99,14 +128,19 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
     return rows.filter((row) => {
       return allWords.every((word) => {
         return (
-          row.name?.toLowerCase().includes(word) ||
+          row.man?.toLowerCase().includes(word) ||
+          row.woman?.toLowerCase().includes(word) ||
+          row.lastName?.toLowerCase().includes(word) ||
+          row.fatherName?.toLowerCase().includes(word) ||
+          row.motherName?.toLowerCase().includes(word) ||
           row.phone?.toLowerCase().includes(word) ||
+          row.mail?.toLowerCase().includes(word) ||
+          row.country?.toLowerCase().includes(word) ||
           row.city?.toLowerCase().includes(word) ||
-          row.neighborhood?.toLowerCase().includes(word) ||
           row.street?.toLowerCase().includes(word) ||
-          row.houseNumber?.toLowerCase().includes(word) ||
-          row.address?.toLowerCase().includes(word) ||
-          row.email?.toLowerCase().includes(word)
+          row.houseNo?.toLowerCase().includes(word) ||
+          row.belongsTo?.toLowerCase().includes(word) ||
+          row.display?.toLowerCase().includes(word)
         );
       });
     });
@@ -189,6 +223,9 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
         initialState={{
           pagination: {
             paginationModel: { pageSize: 25 },
+          },
+          columns: {
+            columnVisibilityModel: SYSTEM_FIELDS_HIDDEN_BY_DEFAULT,
           },
         }}
         pageSizeOptions={[25, 50, 100]}

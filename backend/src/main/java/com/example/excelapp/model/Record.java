@@ -4,6 +4,8 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import lombok.*;
 
+import java.time.LocalDate;
+
 @Entity
 @Table(name = "records")
 @Getter
@@ -21,27 +23,66 @@ public class Record {
     @JsonIgnore
     private User user;
 
-    @Column(nullable = false)
-    private String name;
+    @Column(name = "hash_code")
+    private String hashCode;
+
+    @Column
+    private String prefix;
+
+    @Column
+    private String man;
+
+    @Column
+    private String woman;
+
+    @Column(name = "last_name")
+    private String lastName;
+
+    @Column(name = "father_name")
+    private String fatherName;
+
+    @Column(name = "mother_name")
+    private String motherName;
 
     @Column
     private String phone;
 
     @Column
-    private String city;
+    private String mail;
 
     @Column
-    private String neighborhood;
+    private String country;
+
+    @Column
+    private String city;
 
     @Column
     private String street;
 
-    @Column(name = "house_number")
-    private String houseNumber;
+    @Column(name = "house_no")
+    private String houseNo;
+
+    @Column(name = "belongs_to")
+    private String belongsTo;
 
     @Column
-    private String address;
+    private String suffix;
 
     @Column
-    private String email;
+    private String display;
+
+    @Column
+    private Boolean print;
+
+    @Column
+    private Boolean changed;
+
+    @Column(name = "change_date")
+    private LocalDate changeDate;
+
+    @Column(name = "change_by")
+    private String changeBy;
+
+    @Column(name = "created_by")
+    private String createdBy;
 }
