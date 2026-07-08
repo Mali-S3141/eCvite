@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect,useCallback, useState } from 'react';
 import { Box, Button, Container, Paper, Typography } from '@mui/material';
 import DataTable from '../components/DataTable';
 import ExcelImport from '../components/ExcelImport';
@@ -25,12 +25,15 @@ export default function DashboardPage() {
   const [records, setRecords] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [selectedRows, setSelectedRows] = useState([]);
+  const [ setSelectedRows] = useState([]);
   const user = getLoggedUser();
   const [isPrintModalOpen, setIsPrintModalOpen] = useState(false); // סטייט לפתיחת המודאל
 
   const [isTableDirty, setIsTableDirty] = useState(false); // 🚨 עוקב אם הטבלה עברה שינוי
-  const loadRecords = async () => {
+
+
+  
+  const loadRecords = useCallback(async () => {
     if (!user?.phone) {
       setRecords([]);
       setLoading(false);
@@ -56,20 +59,11 @@ export default function DashboardPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [user?.phone]);
 
   useEffect(() => {
     loadRecords();
-  }, []);
-  //  ה-useEffect החדש שאת מוסיפה ממש כאן מתחתיו:
-  useEffect(() => {
-    const cameFromPreview = sessionStorage.getItem('fromPreview');
-    
-    if (cameFromPreview === 'true') {
-      setIsPrintModalOpen(true); // פותח את המודאל רק אם חזרנו מהתצוגה המקדימה
-      sessionStorage.removeItem('fromPreview'); // מוחק את הסימן מיד כדי שלא יציק שוב
-    }
-  }, []);
+  }, [loadRecords]);
 
  //  מקפיץ אזהרה ברענן/סגירה רק אם הסטייט השתנה (כלומר יש שינויים שלא נשמרו)
   useEffect(() => {
