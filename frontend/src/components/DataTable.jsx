@@ -17,11 +17,9 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
   const [rows, setRows] = useState(records);
   const [selectionModel, setSelectionModel] = useState([]);
   const [sortModel, setSortModel] = useState([]);
-  // סטייטים לניהול הסינון והפילטור החכם ב-Enter
   const [activeFilters, setActiveFilters] = useState([]);
   const [inputValue, setInputValue] = useState('');
-  // 🚨 סטייט ייעודי שעוקב אם יש שינויים לא שמורים בשרת
-  const [isDirty, setIsDirty] = useState(false);
+  
   
 
   useEffect(() => {
@@ -29,7 +27,6 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
   }, [records]);
 
  const handleSaveClick = () => {
-    setIsDirty(false); // מכבים את האזהרה כי המשתמש לחץ רשמית על שמירה
     onSave(rows);
   };
 
@@ -47,7 +44,6 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
       email: '',
     };
     setRows((prevRows) => [newRow, ...prevRows]);
-    setIsDirty(true); //  מדליק את מצב האזהרה (נוספה שורה)
 
 
   };
@@ -58,14 +54,12 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
     setSelectionModel([]);
     onSelectionChange([]);
     onAutoSave(updatedRows);
-    setIsDirty(true); //  מדליק את מצב האזהרה (נמחקו שורות)
   };
 
  const processRowUpdate = (newRow) => {   
     const updatedRows = rows.map((row) => (row.id === newRow.id ? newRow : row));   
     setRows(updatedRows);   
     onAutoSave(updatedRows); 
-    setIsDirty(true); //  מדליק את מצב האזהרה (תא נערך)
     return newRow;   
   };
 
