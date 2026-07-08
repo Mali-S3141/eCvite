@@ -25,12 +25,10 @@ export default function DashboardPage() {
   const [records, setRecords] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [ setSelectedRows] = useState([]);
   const user = getLoggedUser();
-  const [isPrintModalOpen, setIsPrintModalOpen] = useState(false); // סטייט לפתיחת המודאל
-
-  const [isTableDirty, setIsTableDirty] = useState(false); // 🚨 עוקב אם הטבלה עברה שינוי
-
+  const [isPrintModalOpen, setIsPrintModalOpen] = useState(false); 
+  const [selectedRows, setSelectedRows] = useState([]); // 🌟 רק הגדרה אחת, נקייה ותקינה!
+  const [isTableDirty, setIsTableDirty] = useState(false);
 
   
   const loadRecords = useCallback(async () => {
@@ -65,6 +63,15 @@ export default function DashboardPage() {
     loadRecords();
   }, [loadRecords]);
 
+  // 🌟 פותח את המודאל אוטומטית אם המשתמש לחץ על "שינוי הגדרות" בתצוגה המקדימה
+  useEffect(() => {
+    const cameFromPreview = sessionStorage.getItem('fromPreview');
+    
+    if (cameFromPreview === 'true') {
+      setIsPrintModalOpen(true);
+      sessionStorage.removeItem('fromPreview'); // מנקים מיד כדי שלא יציק ברענונים הבאים
+    }
+  }, []);
  //  מקפיץ אזהרה ברענן/סגירה רק אם הסטייט השתנה (כלומר יש שינויים שלא נשמרו)
   useEffect(() => {
     const handleBeforeUnload = (e) => {
@@ -150,6 +157,7 @@ export default function DashboardPage() {
         open={isPrintModalOpen} 
         onClose={() => setIsPrintModalOpen(false)} 
         selectedRows={selectedRows} 
+        
       />
 
       <Box mt={3} display="flex" justifyContent="flex-end" gap={2}>
