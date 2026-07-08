@@ -21,11 +21,11 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
   const [activeFilters, setActiveFilters] = useState([]);
   const [inputValue, setInputValue] = useState('');
   // 🚨 סטייט ייעודי שעוקב אם יש שינויים לא שמורים בשרת
-  const [isDirty, setIsDirty] = useState(false);
+  const [ setIsDirty] = useState(false);
   
 
   useEffect(() => {
-    setRows(records);
+    setRows(records)
   }, [records]);
 
  const handleSaveClick = () => {
