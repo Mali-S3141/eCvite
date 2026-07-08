@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Box, Button, Paper, Stack, Typography } from '@mui/material';
+import { Box, Button, Paper, Stack, Typography, TextField, Chip } from '@mui/material';
 import { DataGrid, GridToolbar } from '@mui/x-data-grid';
 
 const defaultColumns = [
@@ -13,15 +13,23 @@ const defaultColumns = [
   { field: 'email', headerName: 'מייל', width: 220, editable: true },
 ];
 
-export default function DataTable({ records, loading, onSave, onSelectionChange }) {
+export default function DataTable({ records, loading, onSave, onAutoSave, onSelectionChange }) {
   const [rows, setRows] = useState(records);
   const [selectionModel, setSelectionModel] = useState([]);
+  const [sortModel, setSortModel] = useState([]);
+  // סטייטים לניהול הסינון והפילטור החכם ב-Enter
+  const [activeFilters, setActiveFilters] = useState([]);
+  const [inputValue, setInputValue] = useState('');
+  // 🚨 סטייט ייעודי שעוקב אם יש שינויים לא שמורים בשרת
+  const [isDirty, setIsDirty] = useState(false);
+  
 
   useEffect(() => {
     setRows(records);
   }, [records]);
 
-  const handleSaveClick = () => {
+ const handleSaveClick = () => {
+    setIsDirty(false); // מכבים את האזהרה כי המשתמש לחץ רשמית על שמירה
     onSave(rows);
   };
 
@@ -39,20 +47,78 @@ export default function DataTable({ records, loading, onSave, onSelectionChange 
       email: '',
     };
     setRows((prevRows) => [newRow, ...prevRows]);
+    setIsDirty(true); //  מדליק את מצב האזהרה (נוספה שורה)
+
+
   };
 
   const handleDeleteRows = () => {
-    setRows((prevRows) => prevRows.filter((row) => !selectionModel.includes(row.id)));
-    onSelectionChange([]);
-  };
-
-  const processRowUpdate = (newRow) => {
-    const updatedRows = rows.map((row) => (row.id === newRow.id ? newRow : row));
+    const updatedRows = rows.filter((row) => !selectionModel.includes(row.id));
     setRows(updatedRows);
-    return newRow;
+    setSelectionModel([]);
+    onSelectionChange([]);
+    onAutoSave(updatedRows);
+    setIsDirty(true); //  מדליק את מצב האזהרה (נמחקו שורות)
   };
 
-  const columns = useMemo(
+ const processRowUpdate = (newRow) => {   
+    const updatedRows = rows.map((row) => (row.id === newRow.id ? newRow : row));   
+    setRows(updatedRows);   
+    onAutoSave(updatedRows); 
+    setIsDirty(true); //  מדליק את מצב האזהרה (תא נערך)
+    return newRow;   
+  };
+
+    const handleInputChange = (e) => {
+    setInputValue(e.target.value);
+  };
+
+  const handleKeyDown = (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      const trimmedWord = inputValue.trim();
+      
+      if (trimmedWord && !activeFilters.includes(trimmedWord)) {
+        setActiveFilters([...activeFilters, trimmedWord]);
+      }
+      setInputValue(''); 
+    }
+  };
+
+  const handleRemoveChip = (chipToRemove) => {
+    setActiveFilters(activeFilters.filter((c) => c !== chipToRemove));
+  };
+
+  const handleFullReset = () => {
+    setActiveFilters([]);
+    setInputValue('');
+    setSortModel([]); 
+  };
+
+  // לוגיקת תת-הסינון והפילטור המשולב
+  const filteredRows = useMemo(() => {
+    const currentWord = inputValue.trim().toLowerCase();
+    const allWords = [...activeFilters.map(f => f.toLowerCase())];
+    if (currentWord) allWords.push(currentWord);
+
+    if (allWords.length === 0) return rows;
+
+    return rows.filter((row) => {
+      return allWords.every((word) => {
+        return (
+          row.name?.toLowerCase().includes(word) ||
+          row.phone?.toLowerCase().includes(word) ||
+          row.city?.toLowerCase().includes(word) ||
+          row.neighborhood?.toLowerCase().includes(word) ||
+          row.street?.toLowerCase().includes(word) ||
+          row.houseNumber?.toLowerCase().includes(word) ||
+          row.address?.toLowerCase().includes(word) ||
+          row.email?.toLowerCase().includes(word)
+        );
+      });
+    });
+  }, [rows, activeFilters, inputValue]);
+ const columns = useMemo(
     () => [
       ...defaultColumns,
       {
@@ -83,8 +149,45 @@ export default function DataTable({ records, loading, onSave, onSelectionChange 
           </Button>
         </Stack>
       </Box>
+
+        {/* סרגל סינון ופילטור משולב */}
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 3, p: 1.5, bgcolor: '#f8f9fa', borderRadius: 1, border: '1px solid #e0e0e0' }}>
+        <Typography variant="body2" fontWeight="bold" color="text.secondary">סינון ופילטור מהיר:</Typography>
+        
+        <TextField
+          label="הקלידי ערך ולחצי Enter לנעילת סינון/פילטור..."
+          variant="outlined"
+          size="small"
+          value={inputValue}
+          onChange={handleInputChange}
+          onKeyDown={handleKeyDown}    
+          sx={{ width: 380, bgcolor: '#ffffff' }}
+        />
+
+        {/* תצוגת התגיות */}
+        <Stack direction="row" spacing={1}>
+          {activeFilters.map((filter, index) => (
+            <Chip
+              key={index}
+              label={filter}
+              onDelete={() => handleRemoveChip(filter)}
+              color="primary"
+              variant="contained"
+              size="small"
+            />
+          ))}
+        </Stack>
+
+        {/* כפתור איפוס מלא */}
+        {(activeFilters.length > 0 || inputValue.trim() !== '' || sortModel.length > 0) && (
+          <Button variant="outlined" color="error" size="small" onClick={handleFullReset} sx={{ fontWeight: 'bold' }}>
+            בטל סינון/מיון
+          </Button>
+        )}
+      </Box>
+
       <DataGrid
-        rows={rows}
+        rows={filteredRows}
         columns={columns}
         loading={loading}
         checkboxSelection
@@ -92,10 +195,6 @@ export default function DataTable({ records, loading, onSave, onSelectionChange 
         components={{ Toolbar: GridToolbar }}
         pageSize={25}
         rowsPerPageOptions={[25, 50, 100]}
-        onSelectionModelChange={(selection) => {
-          setSelectionModel(selection);
-          onSelectionChange(selection);
-        }}
         experimentalFeatures={{ newEditingApi: true }}
         processRowUpdate={processRowUpdate}
         localeText={{
@@ -162,6 +261,13 @@ export default function DataTable({ records, loading, onSave, onSelectionChange 
           },
         }}
         editMode="row"
+        rowSelectionModel={selectionModel}
+        onRowSelectionModelChange={(newSelectionModel) => {
+          setSelectionModel(newSelectionModel);
+          onSelectionChange(newSelectionModel);
+        }}
+        sortModel={sortModel}
+        onSortModelChange={(model) => setSortModel(model)}
       />
     </Paper>
   );

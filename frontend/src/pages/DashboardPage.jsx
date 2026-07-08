@@ -3,6 +3,9 @@ import { Box, Button, Container, Paper, Typography } from '@mui/material';
 import DataTable from '../components/DataTable';
 import ExcelImport from '../components/ExcelImport';
 import api from '../services/api';
+import PrintModal from '../components/PrintModal'; // ייבוא המודאל החדש
+
+
 
 function getLoggedUser() {
   const raw = localStorage.getItem('user');
@@ -24,7 +27,9 @@ export default function DashboardPage() {
   const [error, setError] = useState('');
   const [ setSelectedRows] = useState([]);
   const user = getLoggedUser();
+  const [isPrintModalOpen, setIsPrintModalOpen] = useState(false); // סטייט לפתיחת המודאל
 
+  const [isTableDirty, setIsTableDirty] = useState(false); // 🚨 עוקב אם הטבלה עברה שינוי
 
 
   
@@ -35,10 +40,18 @@ export default function DashboardPage() {
       return;
     }
 
-    try {
+  try {
       setLoading(true);
       const response = await api.getRecords(user.phone);
-      setRecords(response.data);
+      
+      //  שיפור: אם הבקאנד החזיר רשימה ריקה (כי ה-DB ריק/לא מחובר), נטען כגיבוי מהלוקאל
+      if (response.data && response.data.length > 0) {
+        setRecords(response.data);
+      } else {
+        const local = getLocalRecords(user.phone);
+        setRecords(local);
+      }
+
       setError('');
     } catch (err) {
       setError('לא ניתן לטעון רשומות מהמנוע האחורי. עובד במצב לא מקוון.');
@@ -52,11 +65,33 @@ export default function DashboardPage() {
     loadRecords();
   }, [loadRecords]);
 
+ //  מקפיץ אזהרה ברענן/סגירה רק אם הסטייט השתנה (כלומר יש שינויים שלא נשמרו)
+  useEffect(() => {
+    const handleBeforeUnload = (e) => {
+      if (isTableDirty) {
+        e.preventDefault();
+        // e.returnValue = 'ישנם שינויים שלא נשמרו. האם אתה בטוח שברצונך לעזוב?';
+        return e.returnValue;
+      }
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [isTableDirty]);
+
+  const handleAutoSaveLocal = (updatedRows) => {
+    if (!user?.phone) return;
+    saveLocalRecords(user.phone, updatedRows); 
+    setRecords(updatedRows); 
+    setIsTableDirty(true); //  בום! ברגע שיש שינוי בטבלה, האבא ננעל רשמית!
+  };
   const handleSave = async (updatedRows) => {
     if (!user?.phone) return;
 
     try {
       await api.saveRecords(user.phone, updatedRows);
+      saveLocalRecords(user.phone, updatedRows);
+      setIsTableDirty(false); //  נשמר בהצלחה בשרת! משחררים את הנעילה
       await loadRecords();
     } catch (err) {
       setError('לא ניתן לשמור רשומות לשרת. השמירה תבצע באופן מקומי.');
@@ -99,19 +134,26 @@ export default function DashboardPage() {
       )}
 
       <Paper sx={{ p: 2, mb: 3 }}>
-        <ExcelImport onImport={handleImport} />
+        <ExcelImport onImport={handleImport} onOpenPrint={() => setIsPrintModalOpen(true)} />
       </Paper>
 
-      <DataTable
+     <DataTable
         records={records}
         loading={loading}
         onSave={handleSave}
+        onAutoSave={handleAutoSaveLocal}
         onSelectionChange={setSelectedRows}
+      />
+
+      {/* רנדור המודאל והעברת הרשומות המסומנות אליו */}
+      <PrintModal 
+        open={isPrintModalOpen} 
+        onClose={() => setIsPrintModalOpen(false)} 
+        selectedRows={selectedRows} 
       />
 
       <Box mt={3} display="flex" justifyContent="flex-end" gap={2}>
         <Button variant="contained">הדפס רשומות</Button>
-        <Button variant="outlined">הדפס מדבקות</Button>
       </Box>
     </Container>
   );
