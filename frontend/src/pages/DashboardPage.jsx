@@ -149,7 +149,7 @@ export default function DashboardPage() {
       <PrintModal 
         open={isPrintModalOpen} 
         onClose={() => setIsPrintModalOpen(false)} 
-        selectedRows={selectedRows} 
+        
       />
 
       <Box mt={3} display="flex" justifyContent="flex-end" gap={2}>
