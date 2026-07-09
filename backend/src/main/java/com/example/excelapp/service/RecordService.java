@@ -23,7 +23,7 @@ public class RecordService {
     public List<Record> findByUser(User user) {
         return recordRepository.findByUser(user);
     }
-
+//מחיקת שורות שהוסרו)
     public List<Record> saveAll(User user, List<Record> records) {
         List<Record> toSave = records.stream()
                 .map(incoming -> reconcile(user, incoming))
@@ -40,7 +40,7 @@ public class RecordService {
 
         return recordRepository.saveAll(toSave);
     }
-
+//קובע מי יצר/שינה ומתי, בשרת בלבד
     private Record reconcile(User user, Record incoming) {
         incoming.setUser(user);
 

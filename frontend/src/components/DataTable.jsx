@@ -212,7 +212,6 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
           </Button>
         )}
       </Box>
-
    <DataGrid
         rows={filteredRows}
         columns={columns}
@@ -220,10 +219,22 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
         checkboxSelection
         disableSelectionOnClick
         components={{ Toolbar: GridToolbar }}
+        // זה ה-sx החדש שפותר את בעיית הסנכרון ב-RTL:
+  sx={{
+    '& .MuiDataGrid-virtualScroller': {
+      overflowX: 'auto !important',
+    },
+    '& .MuiDataGrid-columnHeaders': {
+      backgroundColor: '#f5f5f5',
+    },
+    // מבטיח שהכותרות והשורות ישתמשו באותו ציר גלילה בדיוק
+    direction: 'rtl', 
+  }}
         initialState={{
           pagination: {
             paginationModel: { pageSize: 25 },
           },
+          //הגדרה שמסתירה את שדות המערכת כברירת מחדל (DataGrid initialState)
           columns: {
             columnVisibilityModel: SYSTEM_FIELDS_HIDDEN_BY_DEFAULT,
           },

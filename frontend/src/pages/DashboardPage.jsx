@@ -92,20 +92,29 @@ export default function DashboardPage() {
     setRecords(updatedRows); 
     setIsTableDirty(true); //  בום! ברגע שיש שינוי בטבלה, האבא ננעל רשמית!
   };
-  const handleSave = async (updatedRows) => {
-    if (!user?.phone) return;
+const handleSave = async (updatedRows) => {
+  console.log("1. כפתור שמור נלחץ בדאשבורד!");
+  
+  if (!user?.phone) {
+    console.log("❌ השליחה נעצרה כי אין טלפון למשתמש:", user);
+    return;
+  }
 
-    try {
-      await api.saveRecords(user.phone, updatedRows);
-      saveLocalRecords(user.phone, updatedRows);
-      setIsTableDirty(false); //  נשמר בהצלחה בשרת! משחררים את הנעילה
-      await loadRecords();
-    } catch (err) {
-      setError('לא ניתן לשמור רשומות לשרת. השמירה תבצע באופן מקומי.');
-      saveLocalRecords(user.phone, updatedRows);
-      setRecords(updatedRows);
-    }
-  };
+  try {
+    console.log("2. שולח לבקאנד עבור טלפון:", user.phone, "את השורות:", updatedRows);
+    await api.saveRecords(user.phone, updatedRows);
+    console.log("3. השרת החזיר תשובה חיובית! נשמר בהצלחה.");
+    
+    saveLocalRecords(user.phone, updatedRows);
+    setIsTableDirty(false); 
+    await loadRecords();
+  } catch (err) {
+    console.error("❌ שגיאה בשליחה לבקאנד:", err);
+    setError('לא ניתן לשמור רשומות לשרת. השמירה תבצע באופן מקומי.');
+    saveLocalRecords(user.phone, updatedRows);
+    setRecords(updatedRows);
+  }
+};
 
   const handleImport = async (rows) => {
     if (!user?.phone) return;
