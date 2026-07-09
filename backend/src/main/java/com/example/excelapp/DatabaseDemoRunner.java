@@ -1,44 +1,78 @@
 package com.example.excelapp;
 
- import com.example.excelapp.entity.user;
- import com.example.excelapp.repository.UserRepository;
- import org.springframework.boot.CommandLineRunner;
+import com.example.excelapp.entity.recipients;
+import com.example.excelapp.repository.recipientsRepository;
+import org.springframework.boot.CommandLineRunner;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Component;
 
-@Component
+import java.time.LocalDate;
+import java.util.List;
+
+
 public class DatabaseDemoRunner implements CommandLineRunner {
 
-    private UserRepository userRepository;
+    private final recipientsRepository recipientsRepository; // נשאר רק ה-Repository של ה-recipients
 
-    // Spring מזריק את ה-Repository אוטומטית
-    public DatabaseDemoRunner(UserRepository userRepository) {
-        this.userRepository = userRepository;
+    // קונסטרקטור המזריק רק את recipientsRepository
+    public DatabaseDemoRunner(recipientsRepository recipientsRepository) {
+        this.recipientsRepository = recipientsRepository;
     }
 
     @Override
     public void run(String... args) throws Exception {
-
-            System.out.println("--- בדיקת פונקציית ה-Hash Code ---");
-
-            // 1. יצירת משתמש חדש עם הפרטים המבוקשים
-            user testingUser = new user();
-            testingUser.setFirstName("ישראל");
-            testingUser.setLastName("ישראלי");
-            testingUser.setPhone("0501234567");
-
-            // שמירה ב-Neon (יוצר גם את העמודות החדשות ב-DB אוטומטית)
-            userRepository.save(testingUser);
-
-            // 2. קריאה לפונקציית ה-Hash שכתבנו
-            int myHashCode = testingUser.generateRowHashCode();
-
-            // 3. הדפסת הקוד לטרמינל
-            System.out.println("קוד ה-Hash שנוצר עבור השורה הוא: " + myHashCode);
+        System.out.println("--- הרצת מערכת ניהול הנמענים ---");
 
 
+        System.out.println("נמען חדש נשמר בהצלחה בבסיס הנתונים!");
 
+        // 2. בדיקת פונקציית שליפת הנתונים (ממוינים לפי עיר)
+        System.out.println("\n--- שליפת כל הנמענים ממוינים לפי עיר ---");
+        List<recipients> allRecipients = getAllRecipientsSortedBy("city");
+        allRecipients.forEach(r -> System.out.println(r.getMan() + " " + r.getLastName() + " - עיר: " + r.getCity()));
+    }
 
+    /**
+     * פונקציה 1: הוספת נתונים (הכנסת נמען חדש ל-Database)
+     */
+    public recipients insertRecipient(String hashCode, String man, String woman, String lastName, String phone, String mail,
+                                      String fatherName, String motherName, String country, String city, String street, String houseNo,
+                                      String belongsTo, String prefix, String suffix, boolean changed, LocalDate changeDate,
+                                      String changeBy, String createdBy, boolean print, String display) {
+
+        recipients r = new recipients();
+        r.setHashCode(hashCode);
+        r.setMan(man);
+        r.setWoman(woman);
+        r.setLastName(lastName);
+        r.setPhone(phone);
+        r.setMail(mail);
+        r.setFatherName(fatherName);
+        r.setMotherName(motherName);
+        r.setCountry(country);
+        r.setCity(city);
+        r.setStreet(street);
+        r.setHouseNo(houseNo);
+        r.setBelongsTo(belongsTo);
+        r.setPrefix(prefix);
+        r.setSuffix(suffix);
+        r.setChanged(changed);
+        r.setChangeDate(changeDate);
+        r.setChangeBy(changeBy);
+        r.setCreatedBy(createdBy);
+        r.setPrint(print);
+        r.setDisplay(display);
+
+        // שמירה בטבלה והחזרת האובייקט השמור
+        return recipientsRepository.save(r);
+    }
+
+    /**
+     * פונקציה 2: שליפת נתונים ממוינים לפי שדה לבחירה
+     * @param propertyName שם המשתנה במחלקת recipients (למשל: "lastName", "city")
+     */
+    public List<recipients> getAllRecipientsSortedBy(String propertyName) {
+        // שליפת כל השורות מה-DB כשהן ממוינות בסדר עולה
+        return recipientsRepository.findAll(Sort.by(Sort.Direction.ASC, propertyName));
     }
 }
-
-
