@@ -219,6 +219,11 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
         checkboxSelection
         disableSelectionOnClick
         components={{ Toolbar: GridToolbar }}
+        componentsProps={{
+          toolbar: {
+            csvOptions: { utf8WithBom: true },
+          },
+        }}
         // זה ה-sx החדש שפותר את בעיית הסנכרון ב-RTL:
   sx={{
     '& .MuiDataGrid-virtualScroller': {
