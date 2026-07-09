@@ -135,21 +135,21 @@ const handleSave = async (updatedRows) => {
   };
 
   return (
-    <Container maxWidth="xl" sx={{ mt: 4, mb: 4 }}>
-      <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
-        <Typography variant="h4">לוח רשומות</Typography>
-        <Button variant="outlined" onClick={handleLogout}>
+    <Container maxWidth="xl" sx={{ mt: 2, mb: 2 }}>
+      <Box display="flex" justifyContent="space-between" alignItems="center" mb={1.5}>
+        <Typography variant="h5">לוח רשומות</Typography>
+        <Button variant="outlined" size="small" onClick={handleLogout}>
           יציאה
         </Button>
       </Box>
 
       {error && (
-        <Typography color="error" variant="body2" mb={2}>
+        <Typography color="error" variant="body2" mb={1}>
           {error}
         </Typography>
       )}
 
-      <Paper sx={{ p: 2, mb: 3 }}>
+      <Paper sx={{ p: 1, mb: 1.5 }}>
         <ExcelImport onImport={handleImport} onOpenPrint={() => setIsPrintModalOpen(true)} />
       </Paper>
 

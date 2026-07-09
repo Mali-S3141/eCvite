@@ -161,7 +161,7 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
   );
 
   return (
-    <Paper sx={{ height: 720, width: '100%' }}>
+    <Paper sx={{ width: '100%' }}>
       <Box sx={{ p: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <Typography variant="h6">טבלת רשומות - עריכה בסגנון Excel</Typography>
         <Stack direction="row" spacing={2}>
@@ -213,6 +213,7 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
         )}
       </Box>
    <DataGrid
+        autoHeight
         rows={filteredRows}
         columns={columns}
         loading={loading}
@@ -224,17 +225,11 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
             csvOptions: { utf8WithBom: true },
           },
         }}
-        // זה ה-sx החדש שפותר את בעיית הסנכרון ב-RTL:
-  sx={{
-    '& .MuiDataGrid-virtualScroller': {
-      overflowX: 'auto !important',
-    },
-    '& .MuiDataGrid-columnHeaders': {
-      backgroundColor: '#f5f5f5',
-    },
-    // מבטיח שהכותרות והשורות ישתמשו באותו ציר גלילה בדיוק
-    direction: 'rtl', 
-  }}
+        sx={{
+          '& .MuiDataGrid-columnHeaders': {
+            backgroundColor: '#f5f5f5',
+          },
+        }}
         initialState={{
           pagination: {
             paginationModel: { pageSize: 25 },
