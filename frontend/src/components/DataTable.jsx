@@ -17,11 +17,12 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
   const [rows, setRows] = useState(records);
   const [selectionModel, setSelectionModel] = useState([]);
   const [sortModel, setSortModel] = useState([]);
-  // סטייטים לניהול הסינון והפילטור החכם ב-Enter
   const [activeFilters, setActiveFilters] = useState([]);
   const [inputValue, setInputValue] = useState('');
+
   // 🚨 סטייט ייעודי שעוקב אם יש שינויים לא שמורים בשרת
   const [ setIsDirty] = useState(false);
+
   
 
   useEffect(() => {
@@ -29,7 +30,6 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
   }, [records]);
 
  const handleSaveClick = () => {
-    setIsDirty(false); // מכבים את האזהרה כי המשתמש לחץ רשמית על שמירה
     onSave(rows);
   };
 
@@ -47,7 +47,6 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
       email: '',
     };
     setRows((prevRows) => [newRow, ...prevRows]);
-    setIsDirty(true); //  מדליק את מצב האזהרה (נוספה שורה)
 
 
   };
@@ -58,14 +57,12 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
     setSelectionModel([]);
     onSelectionChange([]);
     onAutoSave(updatedRows);
-    setIsDirty(true); //  מדליק את מצב האזהרה (נמחקו שורות)
   };
 
  const processRowUpdate = (newRow) => {   
     const updatedRows = rows.map((row) => (row.id === newRow.id ? newRow : row));   
     setRows(updatedRows);   
     onAutoSave(updatedRows); 
-    setIsDirty(true); //  מדליק את מצב האזהרה (תא נערך)
     return newRow;   
   };
 
@@ -186,15 +183,19 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
         )}
       </Box>
 
-      <DataGrid
+   <DataGrid
         rows={filteredRows}
         columns={columns}
         loading={loading}
         checkboxSelection
         disableSelectionOnClick
         components={{ Toolbar: GridToolbar }}
-        pageSize={25}
-        rowsPerPageOptions={[25, 50, 100]}
+        initialState={{
+          pagination: {
+            paginationModel: { pageSize: 25 },
+          },
+        }}
+        pageSizeOptions={[25, 50, 100]}
         experimentalFeatures={{ newEditingApi: true }}
         processRowUpdate={processRowUpdate}
         localeText={{
@@ -229,7 +230,6 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
           columnMenuManageColumns: 'ניהול עמודות',
           footerTotalRows: 'סה"כ שורות:',
           footerTotalVisibleRows: (visibleCount, totalCount) => `${visibleCount.toLocaleString()} מתוך ${totalCount.toLocaleString()}`,
-          footerPaginationRowsPerPage: 'שורות בעמוד:',
           filterOperatorContains: 'מכיל',
           filterOperatorEquals: 'שווה',
           filterOperatorStartsWith: 'מתחיל ב',
@@ -254,17 +254,14 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
           pinnedToLeft: 'מוצמד לשמאל',
           pinnedToRight: 'מוצמד לימין',
           unpin: 'בטל הצמדה',
-          MuiTablePagination: {
-            labelDisplayedRows: ({ from, to, count }) => `${from}-${to} מתוך ${count !== -1 ? count : `יותר מ${to}`}`,
-            labelRowsPerPage: 'שורות בעמוד:',
-            labelRowsSelected: (count) => count > 1 ? `${count} שורות נבחרו` : `שורה אחת נבחרה`,
-          },
         }}
         editMode="row"
         rowSelectionModel={selectionModel}
         onRowSelectionModelChange={(newSelectionModel) => {
           setSelectionModel(newSelectionModel);
-          onSelectionChange(newSelectionModel);
+          
+          const fullSelectedRows = rows.filter((row) => newSelectionModel.includes(row.id));
+          onSelectionChange(fullSelectedRows);
         }}
         sortModel={sortModel}
         onSortModelChange={(model) => setSortModel(model)}
