@@ -58,12 +58,13 @@ const { selectedRows = [], selectedItems = [], labelSize = 'medium', printer = '
             variant="outlined" 
             color="primary" 
            onClick={() => {
-              //  שומרים את כל המצב הנוכחי בזיכרון לפני שחוזרים
+              //  שומרים את כל המצב הנוכחי בזיכרון לפני שחוזרים, כולל אילו שורות היו מסומנות
                sessionStorage.setItem('fromPreview', 'true');
                sessionStorage.setItem('savedLabelSize', labelSize);
                sessionStorage.setItem('savedPrinter', printer);
                sessionStorage.setItem('savedFontType', fontType);
                sessionStorage.setItem('savedDeliveryMethod', deliveryMethod);
+               sessionStorage.setItem('savedSelectedIds', JSON.stringify(rowsToDisplay.map((r) => r.id)));
                 navigate('/dashboard');
             }} 
 >

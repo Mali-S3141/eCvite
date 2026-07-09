@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Box, Button, Paper, Stack, Typography, TextField, Chip } from '@mui/material';
 import { DataGrid, GridToolbar } from '@mui/x-data-grid';
 
@@ -34,17 +34,29 @@ const SYSTEM_FIELDS_HIDDEN_BY_DEFAULT = {
   createdBy: false,
 };
 
-export default function DataTable({ records, loading, onSave, onAutoSave, onSelectionChange }) {
+export default function DataTable({ records, loading, onSave, onAutoSave, onSelectionChange, initialSelectedIds }) {
   const [rows, setRows] = useState(records);
-  const [selectionModel, setSelectionModel] = useState([]);
+  const [selectionModel, setSelectionModel] = useState(initialSelectedIds || []);
   const [sortModel, setSortModel] = useState([]);
   const [activeFilters, setActiveFilters] = useState([]);
   const [inputValue, setInputValue] = useState('');
+  const appliedInitialSelection = useRef(false);
 
 
   useEffect(() => {
     setRows(records)
   }, [records]);
+
+  // משחזרת פעם אחת בלבד את הבחירה שהייתה קיימת (חוזרים מתצוגה מקדימה), ברגע שהשורות נטענות
+  useEffect(() => {
+    if (!appliedInitialSelection.current && rows.length && initialSelectedIds && initialSelectedIds.length) {
+      const matched = rows.filter((row) => initialSelectedIds.includes(row.id));
+      if (matched.length) {
+        onSelectionChange(matched);
+      }
+      appliedInitialSelection.current = true;
+    }
+  }, [rows, initialSelectedIds, onSelectionChange]);
 
  const handleSaveClick = () => {
     onSave(rows);
