@@ -1,10 +1,9 @@
 package com.example.excelapp;
 
 import com.example.excelapp.entity.recipients;
-import com.example.excelapp.repository.recipientsRepository;
+import com.example.excelapp.repository.RecipientsRepository;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.data.domain.Sort;
-import org.springframework.stereotype.Component;
 
 import java.time.LocalDate;
 import java.util.List;
@@ -12,10 +11,10 @@ import java.util.List;
 
 public class DatabaseDemoRunner implements CommandLineRunner {
 
-    private final recipientsRepository recipientsRepository; // נשאר רק ה-Repository של ה-recipients
+    private final RecipientsRepository recipientsRepository; // נשאר רק ה-Repository של ה-recipients
 
     // קונסטרקטור המזריק רק את recipientsRepository
-    public DatabaseDemoRunner(recipientsRepository recipientsRepository) {
+    public DatabaseDemoRunner(RecipientsRepository recipientsRepository) {
         this.recipientsRepository = recipientsRepository;
     }
 

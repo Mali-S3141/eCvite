@@ -3,6 +3,10 @@ package com.example.excelapp.entity;
 import jakarta.persistence.*;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.time.LocalDate;
 import java.util.Objects;
 
@@ -57,4 +61,27 @@ public class recipients {
 
     private boolean print; // flag
     private String display;
+    public String generateRowHashCode() {
+        try {
+            String data =
+                    Objects.toString(man, "") +
+                            Objects.toString(woman, "") +
+                            Objects.toString(lastName, "") +
+                            Objects.toString(phone, "");
+
+            MessageDigest md = MessageDigest.getInstance("SHA-256");
+            byte[] hash = md.digest(data.getBytes(StandardCharsets.UTF_8));
+
+            StringBuilder sb = new StringBuilder();
+            for (byte b : hash) {
+                sb.append(String.format("%02x", b));
+            }
+
+            return sb.toString();
+
+        } catch (NoSuchAlgorithmException e) {
+            throw new RuntimeException("Error generating hash", e);
+        }
+    }
 }
+
