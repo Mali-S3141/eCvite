@@ -28,7 +28,12 @@ public class RecipientController {
         // שמירה במסד הנתונים
         recipients savedRecipient = recipientRepository.save(newRecipient);
 
+
+
+
+
         // החזרת הרשומה שנשמרה
         return ResponseEntity.status(HttpStatus.CREATED).body(savedRecipient);
     }
+
 }

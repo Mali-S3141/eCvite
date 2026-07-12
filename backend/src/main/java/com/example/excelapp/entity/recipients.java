@@ -17,6 +17,7 @@ import java.util.Objects;
 public class recipients {
 
     @Id
+
     @Column(name = "hash_code")
     private String hashCode; // מפתח
 
