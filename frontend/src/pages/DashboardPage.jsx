@@ -96,9 +96,20 @@ export default function DashboardPage() {
 
   const handleAutoSaveLocal = (updatedRows) => {
     if (!user?.phone) return;
-    saveLocalRecords(user.phone, updatedRows); 
-    setRecords(updatedRows); 
+    saveLocalRecords(user.phone, updatedRows);
+    setRecords(updatedRows);
     setIsTableDirty(true); //  בום! ברגע שיש שינוי בטבלה, האבא ננעל רשמית!
+  };
+
+  // מחיקה מפורשת ומיידית בשרת - רק ה-id-ים שבאמת נמחקו במסך, לא לפי השוואת רשימה מלאה
+  const handleDeleteRows = async (idsToDelete) => {
+    const realIds = idsToDelete.filter((id) => typeof id === 'number' || /^\d+$/.test(id));
+    if (!realIds.length) return;
+    try {
+      await api.deleteRecords(realIds);
+    } catch (err) {
+      console.error('לא ניתן היה למחוק את הרשומות מהשרת:', err);
+    }
   };
 const handleSave = async (updatedRows) => {
   console.log("1. כפתור שמור נלחץ בדאשבורד!");
@@ -167,6 +178,7 @@ const handleSave = async (updatedRows) => {
         onSave={handleSave}
         onAutoSave={handleAutoSaveLocal}
         onSelectionChange={setSelectedRows}
+        onDeleteRows={handleDeleteRows}
         initialSelectedIds={initialSelectedIds}
       />
 

@@ -60,6 +60,17 @@ public class RecordsController {
         return ResponseEntity.ok(saved);
     }
 
+    @PostMapping("/delete")
+    public ResponseEntity<Void> deleteRecords(@RequestBody Map<String, Object> request) {
+        @SuppressWarnings("unchecked")
+        List<Object> rawIds = (List<Object>) request.get("ids");
+        List<Long> ids = rawIds == null
+                ? List.of()
+                : rawIds.stream().map(o -> Long.valueOf(String.valueOf(o))).toList();
+        recordService.deleteByIds(ids);
+        return ResponseEntity.ok().build();
+    }
+
     @PostMapping("/import")
     public List<Record> importRecords(@RequestBody Map<String, Object> request) {
         String phone = (String) request.get("phone");

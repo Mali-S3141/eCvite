@@ -34,7 +34,7 @@ const SYSTEM_FIELDS_HIDDEN_BY_DEFAULT = {
   createdBy: false,
 };
 
-export default function DataTable({ records, loading, onSave, onAutoSave, onSelectionChange, initialSelectedIds }) {
+export default function DataTable({ records, loading, onSave, onAutoSave, onSelectionChange, onDeleteRows, initialSelectedIds }) {
   const [rows, setRows] = useState(records);
   const [selectionModel, setSelectionModel] = useState(initialSelectedIds || []);
   const [sortModel, setSortModel] = useState([]);
@@ -94,6 +94,10 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
     setSelectionModel([]);
     onSelectionChange([]);
     onAutoSave(updatedRows);
+    // מחיקה מפורשת מיידית בשרת - רק השורות שבאמת סומנו ונלחצו עליהן "מחק", לא לפי השוואת רשימה
+    if (onDeleteRows) {
+      onDeleteRows(selectionModel);
+    }
   };
 
  const processRowUpdate = (newRow) => {   
