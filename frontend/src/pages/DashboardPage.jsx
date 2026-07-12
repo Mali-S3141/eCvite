@@ -26,9 +26,16 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const user = getLoggedUser();
-  const [isPrintModalOpen, setIsPrintModalOpen] = useState(false); 
+  const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
   const [selectedRows, setSelectedRows] = useState([]); // 🌟 רק הגדרה אחת, נקייה ותקינה!
   const [isTableDirty, setIsTableDirty] = useState(false);
+
+  // זהות השורות שהיו מסומנות לפני שיצאנו לתצוגה המקדימה - נקרא פעם אחת, בטרם עולה הטבלה
+  const [initialSelectedIds] = useState(() => {
+    if (typeof window === 'undefined') return [];
+    const saved = sessionStorage.getItem('savedSelectedIds');
+    return saved ? JSON.parse(saved) : [];
+  });
 
   
   const loadRecords = useCallback(async () => {
@@ -70,6 +77,7 @@ export default function DashboardPage() {
     if (cameFromPreview === 'true') {
       setIsPrintModalOpen(true);
       sessionStorage.removeItem('fromPreview'); // מנקים מיד כדי שלא יציק ברענונים הבאים
+      sessionStorage.removeItem('savedSelectedIds');
     }
   }, []);
  //  מקפיץ אזהרה ברענן/סגירה רק אם הסטייט השתנה (כלומר יש שינויים שלא נשמרו)
@@ -135,21 +143,21 @@ const handleSave = async (updatedRows) => {
   };
 
   return (
-    <Container maxWidth="xl" sx={{ mt: 4, mb: 4 }}>
-      <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
-        <Typography variant="h4">לוח רשומות</Typography>
-        <Button variant="outlined" onClick={handleLogout}>
+    <Container maxWidth="xl" sx={{ mt: 2, mb: 2 }}>
+      <Box display="flex" justifyContent="space-between" alignItems="center" mb={1.5}>
+        <Typography variant="h5">לוח רשומות</Typography>
+        <Button variant="outlined" size="small" onClick={handleLogout}>
           יציאה
         </Button>
       </Box>
 
       {error && (
-        <Typography color="error" variant="body2" mb={2}>
+        <Typography color="error" variant="body2" mb={1}>
           {error}
         </Typography>
       )}
 
-      <Paper sx={{ p: 2, mb: 3 }}>
+      <Paper sx={{ p: 1, mb: 1.5 }}>
         <ExcelImport onImport={handleImport} onOpenPrint={() => setIsPrintModalOpen(true)} />
       </Paper>
 
@@ -159,6 +167,7 @@ const handleSave = async (updatedRows) => {
         onSave={handleSave}
         onAutoSave={handleAutoSaveLocal}
         onSelectionChange={setSelectedRows}
+        initialSelectedIds={initialSelectedIds}
       />
 
       {/* רנדור המודאל והעברת הרשומות המסומנות אליו */}

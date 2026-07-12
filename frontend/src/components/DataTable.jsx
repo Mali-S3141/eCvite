@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Box, Button, Paper, Stack, Typography, TextField, Chip } from '@mui/material';
 import { DataGrid, GridToolbar } from '@mui/x-data-grid';
 
@@ -34,17 +34,29 @@ const SYSTEM_FIELDS_HIDDEN_BY_DEFAULT = {
   createdBy: false,
 };
 
-export default function DataTable({ records, loading, onSave, onAutoSave, onSelectionChange }) {
+export default function DataTable({ records, loading, onSave, onAutoSave, onSelectionChange, initialSelectedIds }) {
   const [rows, setRows] = useState(records);
-  const [selectionModel, setSelectionModel] = useState([]);
+  const [selectionModel, setSelectionModel] = useState(initialSelectedIds || []);
   const [sortModel, setSortModel] = useState([]);
   const [activeFilters, setActiveFilters] = useState([]);
   const [inputValue, setInputValue] = useState('');
+  const appliedInitialSelection = useRef(false);
 
 
   useEffect(() => {
     setRows(records)
   }, [records]);
+
+  // משחזרת פעם אחת בלבד את הבחירה שהייתה קיימת (חוזרים מתצוגה מקדימה), ברגע שהשורות נטענות
+  useEffect(() => {
+    if (!appliedInitialSelection.current && rows.length && initialSelectedIds && initialSelectedIds.length) {
+      const matched = rows.filter((row) => initialSelectedIds.includes(row.id));
+      if (matched.length) {
+        onSelectionChange(matched);
+      }
+      appliedInitialSelection.current = true;
+    }
+  }, [rows, initialSelectedIds, onSelectionChange]);
 
  const handleSaveClick = () => {
     onSave(rows);
@@ -161,7 +173,7 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
   );
 
   return (
-    <Paper sx={{ height: 720, width: '100%' }}>
+    <Paper sx={{ width: '100%' }}>
       <Box sx={{ p: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <Typography variant="h6">טבלת רשומות - עריכה בסגנון Excel</Typography>
         <Stack direction="row" spacing={2}>
@@ -213,23 +225,23 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
         )}
       </Box>
    <DataGrid
+        autoHeight
         rows={filteredRows}
         columns={columns}
         loading={loading}
         checkboxSelection
         disableSelectionOnClick
         components={{ Toolbar: GridToolbar }}
-        // זה ה-sx החדש שפותר את בעיית הסנכרון ב-RTL:
-  sx={{
-    '& .MuiDataGrid-virtualScroller': {
-      overflowX: 'auto !important',
-    },
-    '& .MuiDataGrid-columnHeaders': {
-      backgroundColor: '#f5f5f5',
-    },
-    // מבטיח שהכותרות והשורות ישתמשו באותו ציר גלילה בדיוק
-    direction: 'rtl', 
-  }}
+        componentsProps={{
+          toolbar: {
+            csvOptions: { utf8WithBom: true },
+          },
+        }}
+        sx={{
+          '& .MuiDataGrid-columnHeaders': {
+            backgroundColor: '#f5f5f5',
+          },
+        }}
         initialState={{
           pagination: {
             paginationModel: { pageSize: 25 },

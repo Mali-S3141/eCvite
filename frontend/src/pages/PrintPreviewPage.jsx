@@ -1,35 +1,56 @@
 // src/pages/PrintPreviewPage.jsx
 import { useLocation, useNavigate } from 'react-router-dom';
 import { Box, Container, Typography, Button, Paper, Stack } from '@mui/material';
+import { REAL_LABEL_SIZES, getRealColumns } from '../utils/labelSheetLayout';
 
 function getDisplayName(row) {
   if (row.display) return row.display;
   return [row.man, row.woman ? `ו${row.woman}` : '', row.lastName].filter(Boolean).join(' ');
 }
 
+// פריסת רשת אמיתית לדף מדבקות - הגדלים ומספר העמודות מגיעים מאותו מקור אמת
+// שמשמש גם את התצוגה הממוזערת במודאל, כדי ששניהם תמיד יתאימו
+const LABEL_LAYOUT = {
+  small: { ...REAL_LABEL_SIZES.small, columns: getRealColumns('small'), nameVariant: 'body1', addrVariant: 'caption' },
+  medium: { ...REAL_LABEL_SIZES.medium, columns: getRealColumns('medium'), nameVariant: 'h5', addrVariant: 'h6' },
+  large: { ...REAL_LABEL_SIZES.large, columns: getRealColumns('large'), nameVariant: 'h4', addrVariant: 'h5' },
+};
+
 export default function PrintPreviewPage() {
   const location = useLocation();
   const navigate = useNavigate();
   
   // חילוץ הנתונים עם תמיכה מלאה גם ב-selectedRows וגם ב-selectedItems של ראש הצוות
-const { selectedRows = [], selectedItems = [], labelSize = 'medium', printer = '' } = location.state || {};  
-  // 🧪 נתוני בדיקה זמניים כדי שתוכלי לעצב ולראות את המדבקות עכשיו!
-  const mockRows = [
-    { id: 1, prefix: 'הרב', man: 'ישראל', woman: '', lastName: 'ישראלי', city: 'בני ברק', street: 'רבי עקיבא', houseNo: '45' },
-    { id: 2, prefix: '', man: 'אלחנן', woman: '', lastName: 'כהן', city: 'ירושלים', street: 'יפו', houseNo: '12' },
-    { id: 3, prefix: '', man: 'אברהם', woman: '', lastName: 'לוי', city: 'בני ברק', street: 'חזון איש', houseNo: '8' }
-  ];
+const { selectedRows = [], selectedItems = [], labelSize = 'medium', printer = '', fontType = 'Arial, sans-serif', deliveryMethod = 'courier' } = location.state || {};
 
-  // קביעת הרשומות להצגה לפי מה שהתקבל (או שימוש במוק)
+  // קביעת הרשומות להצגה לפי מה שהתקבל
   const actualRows = selectedRows.length > 0 ? selectedRows : selectedItems;
-  const rowsToDisplay = actualRows.length > 0 ? actualRows : mockRows;
+  const rowsToDisplay = actualRows;
+  const layout = LABEL_LAYOUT[labelSize] || LABEL_LAYOUT.medium;
 
   return (
-    <Container maxWidth="md" sx={{ mt: 4, mb: 4 }}>
-      <Paper sx={{ p: 4, borderRadius: 2, bgcolor: '#f8f9fa' }}>
-        
-        {/* סרגל עליון עם כל הכפתורים */}
-        <Box display="flex" justifyContent="space-between" alignItems="center" mb={4} borderBottom="1px solid #e0e0e0" pb={2} gap={2}>
+    <Container maxWidth="md" sx={{ mt: 4, mb: 4, '@media print': { m: 0, maxWidth: 'none', p: 0 } }}>
+      <style>{`@media print { @page { margin: 10mm; } }`}</style>
+      <Paper
+        sx={{
+          p: 4,
+          borderRadius: 2,
+          bgcolor: '#f8f9fa',
+          '@media print': { p: 0, boxShadow: 'none', bgcolor: 'transparent', borderRadius: 0 },
+        }}
+      >
+
+        {/* סרגל עליון עם כל הכפתורים - מוסתר לגמרי בהדפסה, מוצג רק על המסך */}
+        <Box
+          display="flex"
+          justifyContent="space-between"
+          alignItems="center"
+          mb={4}
+          borderBottom="1px solid #e0e0e0"
+          pb={2}
+          gap={2}
+          sx={{ '@media print': { display: 'none' } }}
+        >
           <Typography variant="h5" fontWeight="bold">תצוגה מקדימה</Typography>
           
           <Stack direction="row" spacing={2}>
@@ -37,11 +58,14 @@ const { selectedRows = [], selectedItems = [], labelSize = 'medium', printer = '
             variant="outlined" 
             color="primary" 
            onClick={() => {
-              //  שומרים את כל המצב הנוכחי בזיכרון לפני שחוזרים
-               sessionStorage.setItem('fromPreview', 'true'); 
+              //  שומרים את כל המצב הנוכחי בזיכרון לפני שחוזרים, כולל אילו שורות היו מסומנות
+               sessionStorage.setItem('fromPreview', 'true');
                sessionStorage.setItem('savedLabelSize', labelSize);
                sessionStorage.setItem('savedPrinter', printer);
-                navigate('/dashboard'); 
+               sessionStorage.setItem('savedFontType', fontType);
+               sessionStorage.setItem('savedDeliveryMethod', deliveryMethod);
+               sessionStorage.setItem('savedSelectedIds', JSON.stringify(rowsToDisplay.map((r) => r.id)));
+                navigate('/dashboard');
             }} 
 >
               שינוי הגדרות הדפסה
@@ -62,51 +86,58 @@ const { selectedRows = [], selectedItems = [], labelSize = 'medium', printer = '
           </Stack>
         </Box>
 
-        {/* אזור המדבקות */}
-        {/* אזור המדבקות - מסודר בשורות עם ירידת שורה אוטומטית */}
-<Stack direction="row" spacing={3} useFlexGap flexWrap="wrap" justifyContent="center">
-          {rowsToDisplay.length === 0 ? (
-            <Typography color="error">לא נבחרו שורות להדפסה. חזרי לטבלה וסמני רשומות.</Typography>
-          ) : (
-            rowsToDisplay.map((row, index) => ( 
-              <Box 
-                key={row.id || index} 
-                className={`preview-label ${labelSize}`} 
-                sx={{ 
-                  // גדלים דינמיים לפי בחירת הגודל במודאל
-                  width: labelSize === 'small' ? '320px' : labelSize === 'large' ? '600px' : '450px',
-                  minHeight: labelSize === 'small' ? '120px' : labelSize === 'large' ? '240px' : '180px',
-                  display: 'flex', 
-                  flexDirection: 'column', 
-                  alignItems: 'center', 
-                  justifyContent: 'center', 
-                  p: labelSize === 'small' ? 2 : 3, 
-                  mb: 1, 
-                  border: '2px solid #000000', 
+        {/* אזור המדבקות - רשת אמיתית של מדבקות, בדיוק כמו שדף המדבקות המודפס ייראה */}
+        {rowsToDisplay.length === 0 ? (
+          <Typography color="error">לא נבחרו שורות להדפסה. חזרי לטבלה וסמני רשומות.</Typography>
+        ) : (
+          <Box
+            sx={{
+              display: 'grid',
+              gridTemplateColumns: `repeat(${layout.columns}, ${layout.width}px)`,
+              justifyContent: 'center',
+              gap: 2,
+            }}
+          >
+            {rowsToDisplay.map((row, index) => (
+              <Box
+                key={row.id || index}
+                sx={{
+                  boxSizing: 'border-box',
+                  width: layout.width,
+                  height: layout.height,
+                  flexShrink: 0,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  p: 2,
+                  border: '2px solid #000000',
                   backgroundColor: '#ffffff',
                   boxShadow: '0 2px 4px rgba(0,0,0,0.05)',
-                  pageBreakInside: 'avoid'
+                  pageBreakInside: 'avoid',
+                  fontFamily: fontType,
+                  '@media print': { boxShadow: 'none' },
                 }}
               >
                 {/* שורת השם המכובדת */}
                 <Typography
-                  variant={labelSize === 'small' ? 'body1' : labelSize === 'large' ? 'h4' : 'h5'}
-                  sx={{ fontWeight: 'bold', mb: 1, color: '#000000', textAlign: 'center' }}
+                  variant={layout.nameVariant}
+                  sx={{ fontWeight: 'bold', mb: 1, color: '#000000', textAlign: 'center', fontFamily: 'inherit' }}
                 >
                   לכבוד {row.prefix || 'הרב'} {getDisplayName(row)} {row.suffix || ''}
                 </Typography>
 
                 {/* שורת הכתובת */}
                 <Typography
-                  variant={labelSize === 'small' ? 'caption' : labelSize === 'large' ? 'h5' : 'h6'}
-                  sx={{ color: '#333333', textAlign: 'center' }}
+                  variant={layout.addrVariant}
+                  sx={{ color: '#333333', textAlign: 'center', fontFamily: 'inherit' }}
                 >
                   {row.street} {row.houseNo}, {row.city} {row.country || ''}
                 </Typography>
               </Box>
-            ))
-          )}
-        </Stack>
+            ))}
+          </Box>
+        )}
       </Paper>
     </Container>
   );

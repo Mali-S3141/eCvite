@@ -1,9 +1,10 @@
 // src/components/PrintModal.jsx
 import { useState } from 'react';
-import { Modal, Box, Typography, Button, RadioGroup, FormControlLabel, Radio, FormControl, InputLabel, Select, MenuItem, Stack } from '@mui/material';
+import { Modal, Box, Typography, Button, RadioGroup, FormControlLabel, Radio, FormControl, InputLabel, Select, MenuItem, Stack, Divider } from '@mui/material';
 import { useNavigate } from 'react-router-dom';
 // 🌟 ייבוא הקבועים החדשים מהעמוד הייעודי
-import { MODAL_TEXTS } from '../pages/HardCodePage';
+import { MODAL_TEXTS, FONT_OPTIONS } from '../pages/HardCodePage';
+import { getScaledLabelSizes, getColumns } from '../utils/labelSheetLayout';
 
 const modalStyle = {
   position: 'absolute',
@@ -16,6 +17,90 @@ const modalStyle = {
   p: 4,
   borderRadius: 2,
 };
+
+// רוחב וגובה קבועים לאזור התצוגה - הם לא זזים/גדלים בעצמם, רק המדבקות בתוכם משתנות
+const PREVIEW_PANEL_WIDTH = 260;
+const PAGE_BOX_HEIGHT = 190;
+const GRID_PADDING_PX = 16; // padding של 1 (8px) מכל צד
+
+// "עמוד" וירטואלי בגודל קבוע - ככל שהמדבקה קטנה יותר, יותר מהן נכנסות באותו שטח בדיוק.
+// הגדלים והמרווח מגיעים בקנה מידה מוקטן מאותו מקור אמת שדף ההדפסה האמיתי משתמש בו,
+// כך שמספר העמודות שרואים כאן תמיד זהה למספר שיודפס בפועל.
+const PAGE_CONTENT_WIDTH = PREVIEW_PANEL_WIDTH - GRID_PADDING_PX;
+const PAGE_CONTENT_HEIGHT = PAGE_BOX_HEIGHT - GRID_PADDING_PX;
+const { gap: MOCK_GAP_PX, sizes: MOCK_LABEL_SIZES } = getScaledLabelSizes(PAGE_CONTENT_WIDTH);
+
+function getLabelsPerPage(size) {
+  const columns = getColumns(PAGE_CONTENT_WIDTH, size.width, MOCK_GAP_PX);
+  const rows = Math.max(1, Math.floor((PAGE_CONTENT_HEIGHT + MOCK_GAP_PX) / (size.height + MOCK_GAP_PX)));
+  return { columns, rows, count: columns * rows };
+}
+
+// מדבקה "ריקה" - ריבוע עם פסים במקום טקסט אמיתי, בדיוק כמו שהדבר נראה בתבניות מדבקות של Word
+function MockLabel({ width, height }) {
+  return (
+    <Box
+      sx={{
+        width,
+        height,
+        border: '1px solid #999',
+        borderRadius: 0.5,
+        bgcolor: '#fff',
+        display: 'flex',
+        flexDirection: 'column',
+        justifyContent: 'center',
+        alignItems: 'center',
+        gap: 0.5,
+        p: 0.5,
+      }}
+    >
+      <Box sx={{ height: 4, width: '80%', bgcolor: 'grey.500', borderRadius: 2 }} />
+      <Box sx={{ height: 3, width: '60%', bgcolor: 'grey.400', borderRadius: 2 }} />
+    </Box>
+  );
+}
+
+// תצוגה קטנה בצד: מדבקה בודדת + רשת מדבקות שמדמה איך הדף המודפס ייראה.
+// הרוחב הכולל של הפאנל קבוע (PREVIEW_PANEL_WIDTH) ולא משתנה - רק המדבקות עצמן גדלות/קטנות בתוכו.
+function LabelSheetPreview({ labelSize }) {
+  const size = MOCK_LABEL_SIZES[labelSize] || MOCK_LABEL_SIZES.medium;
+  const { columns, count } = getLabelsPerPage(size);
+
+  return (
+    <Box sx={{ width: PREVIEW_PANEL_WIDTH, flexShrink: 0, flexGrow: 0 }}>
+      <Typography variant="caption" color="text.secondary" sx={{ display: 'block', textAlign: 'center', mb: 0.5 }}>מדבקה בודדת</Typography>
+      <Box sx={{ width: '100%', height: 90, display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+        <MockLabel {...size} />
+      </Box>
+
+      <Typography variant="caption" color="text.secondary" sx={{ display: 'block', textAlign: 'center', mt: 1, mb: 0.5 }}>
+        תצוגת דף ההדפסה ({count} מדבקות בעמוד)
+      </Typography>
+      <Box
+        sx={{
+          width: '100%',
+          height: PAGE_BOX_HEIGHT,
+          border: '1px solid #ccc',
+          borderRadius: 1,
+          p: 1,
+          bgcolor: '#fafafa',
+          display: 'grid',
+          gridTemplateColumns: `repeat(${columns}, ${size.width}px)`,
+          gridAutoRows: `${size.height}px`,
+          justifyContent: 'center',
+          alignContent: 'center',
+          gap: `${MOCK_GAP_PX}px`,
+          overflow: 'hidden',
+          boxSizing: 'border-box',
+        }}
+      >
+        {Array.from({ length: count }).map((_, i) => (
+          <MockLabel key={i} {...size} />
+        ))}
+      </Box>
+    </Box>
+  );
+}
 
 export default function PrintModal({ open, onClose, selectedRows }) {
   const navigate = useNavigate();
@@ -36,14 +121,32 @@ export default function PrintModal({ open, onClose, selectedRows }) {
     return 'medium';
   });
 
-  // 3. בדיקה בטוחה עבור המדפסת
+  // 3. בדיקה בטוחה עבור המדפסת - מתעלמת מערך שמור ישן שכבר לא תקין (כמו "printer1" מגרסה קודמת)
   const [printer, setPrinter] = useState(() => {
     if (typeof window !== 'undefined') {
-      return sessionStorage.getItem('savedPrinter') || 'printer1';
+      const saved = sessionStorage.getItem('savedPrinter');
+      return saved === 'home' || saved === 'office' ? saved : 'home';
     }
-    return 'printer1';
+    return 'home';
   });
-  
+
+  // 3.1 בדיקה בטוחה עבור אופן קבלת ההדפסה (רלוונטי רק כשבוחרים במדפסת המשרד)
+  const [deliveryMethod, setDeliveryMethod] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const saved = sessionStorage.getItem('savedDeliveryMethod');
+      return saved === 'courier' || saved === 'pickup' ? saved : 'courier';
+    }
+    return 'courier';
+  });
+
+  // 4. בדיקה בטוחה עבור סוג הכתב
+  const [fontType, setFontType] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return sessionStorage.getItem('savedFontType') || FONT_OPTIONS[0].value;
+    }
+    return FONT_OPTIONS[0].value;
+  });
+
   const [printType, setPrintType] = useState('labels');
 
   // פונקציה שמטפלת במעבר משלב 1 לשלב 2
@@ -57,23 +160,29 @@ export default function PrintModal({ open, onClose, selectedRows }) {
   };
 
   const handlePrint = () => {
-    alert(`שולח להדפסה במדפסת ${printer} בגודל ${labelSize} עבור ${selectedRows.length} רשומות.`);
-    
+    const printerLabel = printer === 'office' ? MODAL_TEXTS.PRINTER_OFFICE : MODAL_TEXTS.PRINTER_HOME;
+    const deliveryPart = printer === 'office'
+      ? ` (${deliveryMethod === 'pickup' ? MODAL_TEXTS.DELIVERY_PICKUP : MODAL_TEXTS.DELIVERY_COURIER})`
+      : '';
+    alert(`שולח להדפסה ב${printerLabel}${deliveryPart} בגודל ${labelSize} עבור ${selectedRows.length} רשומות.`);
+
     sessionStorage.removeItem('fromPreview');
     sessionStorage.removeItem('savedLabelSize');
     sessionStorage.removeItem('savedPrinter');
-    
+    sessionStorage.removeItem('savedFontType');
+    sessionStorage.removeItem('savedDeliveryMethod');
+
     onClose();
-    setStep(1); 
+    setStep(1);
   };
 
   const handlePreview = () => {
-    navigate('/print-preview', { state: { selectedItems: selectedRows, labelSize, printer } });
+    navigate('/print-preview', { state: { selectedItems: selectedRows, labelSize, printer, fontType, deliveryMethod } });
   };
 
   return (
     <Modal open={open} onClose={onClose}>
-      <Box sx={modalStyle}>
+      <Box sx={{ ...modalStyle, width: step === 2 ? 740 : 400 }}>
         
         {/* --- שלב 1: על מה תרצה להדפיס? --- */}
         {step === 1 && (
@@ -96,34 +205,69 @@ export default function PrintModal({ open, onClose, selectedRows }) {
         {step === 2 && (
           <Box>
             <Typography variant="h6" mb={3}>{MODAL_TEXTS.STEP_2_TITLE}</Typography>
-            
-            <Stack spacing={3}>
-              <FormControl fullWidth>
-                <InputLabel id="size-label">{MODAL_TEXTS.SIZE_INPUT_LABEL}</InputLabel>
-                <Select
-                  labelId="size-label"
-                  value={labelSize}
-                  label={MODAL_TEXTS.SIZE_INPUT_LABEL}
-                  onChange={(e) => setLabelSize(e.target.value)}
-                >
-                  <MenuItem value="small">{MODAL_TEXTS.SIZE_SMALL}</MenuItem>
-                  <MenuItem value="medium">{MODAL_TEXTS.SIZE_MEDIUM}</MenuItem>
-                  <MenuItem value="large">{MODAL_TEXTS.SIZE_LARGE}</MenuItem>
-                </Select>
-              </FormControl>
 
-              <FormControl fullWidth>
-                <InputLabel id="printer-label">{MODAL_TEXTS.PRINTER_INPUT_LABEL}</InputLabel>
-                <Select
-                  labelId="printer-label"
-                  value={printer}
-                  label={MODAL_TEXTS.PRINTER_INPUT_LABEL}
-                  onChange={(e) => setPrinter(e.target.value)}
-                >
-                  <MenuItem value="printer1">{MODAL_TEXTS.PRINTER_MAIN}</MenuItem>
-                  <MenuItem value="printer2">{MODAL_TEXTS.PRINTER_BACK}</MenuItem>
-                </Select>
-              </FormControl>
+            <Stack direction="row" spacing={3} alignItems="stretch">
+              <Stack spacing={3} sx={{ flex: 1 }}>
+                <FormControl fullWidth>
+                  <InputLabel id="font-label">{MODAL_TEXTS.FONT_INPUT_LABEL}</InputLabel>
+                  <Select
+                    labelId="font-label"
+                    value={fontType}
+                    label={MODAL_TEXTS.FONT_INPUT_LABEL}
+                    onChange={(e) => setFontType(e.target.value)}
+                  >
+                    {FONT_OPTIONS.map((font) => (
+                      <MenuItem key={font.value} value={font.value} style={{ fontFamily: font.value }}>
+                        {font.label}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+
+                <FormControl fullWidth>
+                  <InputLabel id="size-label">{MODAL_TEXTS.SIZE_INPUT_LABEL}</InputLabel>
+                  <Select
+                    labelId="size-label"
+                    value={labelSize}
+                    label={MODAL_TEXTS.SIZE_INPUT_LABEL}
+                    onChange={(e) => setLabelSize(e.target.value)}
+                  >
+                    <MenuItem value="small">{MODAL_TEXTS.SIZE_SMALL}</MenuItem>
+                    <MenuItem value="medium">{MODAL_TEXTS.SIZE_MEDIUM}</MenuItem>
+                    <MenuItem value="large">{MODAL_TEXTS.SIZE_LARGE}</MenuItem>
+                  </Select>
+                </FormControl>
+
+                <FormControl fullWidth>
+                  <InputLabel id="printer-label">{MODAL_TEXTS.PRINTER_INPUT_LABEL}</InputLabel>
+                  <Select
+                    labelId="printer-label"
+                    value={printer}
+                    label={MODAL_TEXTS.PRINTER_INPUT_LABEL}
+                    onChange={(e) => setPrinter(e.target.value)}
+                  >
+                    <MenuItem value="home">{MODAL_TEXTS.PRINTER_HOME}</MenuItem>
+                    <MenuItem value="office">{MODAL_TEXTS.PRINTER_OFFICE}</MenuItem>
+                  </Select>
+                </FormControl>
+
+                {/* מוצג רק כשבוחרים במדפסת המשרד - איך יגיע ההדפס אליה */}
+                {printer === 'office' && (
+                  <Box>
+                    <Typography variant="body2" color="text.secondary" mb={0.5}>
+                      {MODAL_TEXTS.DELIVERY_INPUT_LABEL}
+                    </Typography>
+                    <RadioGroup value={deliveryMethod} onChange={(e) => setDeliveryMethod(e.target.value)}>
+                      <FormControlLabel value="courier" control={<Radio />} label={MODAL_TEXTS.DELIVERY_COURIER} />
+                      <FormControlLabel value="pickup" control={<Radio />} label={MODAL_TEXTS.DELIVERY_PICKUP} />
+                    </RadioGroup>
+                  </Box>
+                )}
+              </Stack>
+
+              <Divider orientation="vertical" flexItem sx={{ mx: 1 }} />
+
+              <LabelSheetPreview labelSize={labelSize} />
             </Stack>
 
             <Stack direction="row" spacing={1} justifyContent="space-between" mt={4}>
