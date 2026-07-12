@@ -12,6 +12,9 @@ public class AuthService {
         this.userRepository = userRepository;
     }
 
-
+    public User loginOrCreate(String name, String phone) {
+        return userRepository.findByPhone(phone)
+                .orElseGet(() -> userRepository.save(User.builder().name(name).phone(phone).build()));
     }
+}
 

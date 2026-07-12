@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Button, Typography, Box } from '@mui/material';
 import * as XLSX from 'xlsx';
 
-export default function ExcelImport({ onImport }) {
+export default function ExcelImport({ onImport, onOpenPrint }) {
   const [fileName, setFileName] = useState('');
 
   const handleFile = async (event) => {
@@ -23,6 +23,9 @@ export default function ExcelImport({ onImport }) {
         ייבוא Excel
         <input hidden type="file" accept=".xlsx,.xls" onChange={handleFile} />
       </Button>
+       <Button variant="outlined" onClick={onOpenPrint}>
+        הדפסה
+       </Button>
       {fileName && <Typography>{fileName}</Typography>}
     </Box>
   );
