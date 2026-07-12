@@ -3,49 +3,55 @@ package com.example.excelapp.service;
 import com.example.excelapp.model.Record;
 import com.example.excelapp.model.User;
 import com.example.excelapp.repository.RecordRepository;
+import jakarta.persistence.EntityManager;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.Set;
 import java.util.stream.Collectors;
 
 @Service
 public class RecordService {
     private final RecordRepository recordRepository;
+    private final EntityManager entityManager;
 
-    public RecordService(RecordRepository recordRepository) {
+    public RecordService(RecordRepository recordRepository, EntityManager entityManager) {
         this.recordRepository = recordRepository;
+        this.entityManager = entityManager;
     }
 
     public List<Record> findByUser(User user) {
         return recordRepository.findByUser(user);
     }
-//מחיקת שורות שהוסרו)
+    @Transactional
     public List<Record> saveAll(User user, List<Record> records) {
         List<Record> toSave = records.stream()
                 .map(incoming -> reconcile(user, incoming))
                 .collect(Collectors.toList());
 
-        Set<Long> keepIds = toSave.stream()
-                .map(Record::getId)
-                .filter(Objects::nonNull)
-                .collect(Collectors.toSet());
-        List<Record> toDelete = recordRepository.findByUser(user).stream()
-                .filter(existing -> !keepIds.contains(existing.getId()))
-                .collect(Collectors.toList());
-        recordRepository.deleteAll(toDelete);
+        List<Record> saved = recordRepository.saveAll(toSave);
+        recordRepository.flush();
+        // ה-hash_code נקבע ע"י טריגר ב-DB (לא על ידינו) - מרעננים כל רשומה כדי לקבל את הערך שהוא יצר
+        // (findAllById לבדו היה מחזיר את האובייקטים ה"ישנים" מהזיכרון, בלי ה-hash_code המעודכן)
+        saved.forEach(entityManager::refresh);
+        return saved;
+    }
 
-        return recordRepository.saveAll(toSave);
+    // מחיקה מפורשת של רשומות ספציפיות שנבחרו במסך (לא לפי "מה שחסר" ברשימה שנשלחה) -
+    // כי הטבלה משותפת לכולם, ואי אפשר לדעת אם רשומה חסרה כי נמחקה או כי מישהי אחרת פשוט לא שלחה אותה
+    public void deleteByIds(List<Long> ids) {
+        if (ids != null && !ids.isEmpty()) {
+            recordRepository.deleteAllById(ids);
+        }
     }
 //קובע מי יצר/שינה ומתי, בשרת בלבד
     private Record reconcile(User user, Record incoming) {
         incoming.setUser(user);
 
         if (incoming.getId() == null) {
-            incoming.setHashCode(generateHashCode(incoming));
             incoming.setCreatedBy(user.getName());
             incoming.setChanged(false);
             incoming.setChangeDate(null);
@@ -55,7 +61,6 @@ public class RecordService {
 
         Record existing = recordRepository.findById(incoming.getId()).orElse(null);
         if (existing == null) {
-            incoming.setHashCode(generateHashCode(incoming));
             incoming.setCreatedBy(user.getName());
             incoming.setChanged(false);
             incoming.setChangeDate(null);
@@ -63,7 +68,6 @@ public class RecordService {
             return incoming;
         }
 
-        incoming.setHashCode(existing.getHashCode());
         incoming.setCreatedBy(existing.getCreatedBy());
 
         if (hasContentChanged(existing, incoming)) {
@@ -98,11 +102,7 @@ public class RecordService {
                 || !Objects.equals(a.getPrint(), b.getPrint());
     }
 
-    private String generateHashCode(Record record) {
-        int hash = Objects.hash(record.getMan(), record.getWoman(), record.getLastName(), record.getPhone());
-        return Integer.toHexString(hash);
-    }
-
+    @Transactional
     public List<Record> importRecords(User user, List<Map<String, String>> values) {
         List<Record> records = values.stream().map(data -> Record.builder()
                 .user(user)
@@ -125,10 +125,13 @@ public class RecordService {
                 .changed(false)
                 .createdBy(user.getName())
                 .build())
-                .peek(record -> record.setHashCode(generateHashCode(record)))
                 .collect(Collectors.toList());
 
-        return recordRepository.saveAll(records);
+        List<Record> saved = recordRepository.saveAll(records);
+        recordRepository.flush();
+        // ה-hash_code נקבע ע"י טריגר ב-DB - מרעננים כל רשומה כדי לקבל את הערך שהוא יצר
+        saved.forEach(entityManager::refresh);
+        return saved;
     }
 
     private String getValue(Map<String, String> data, String... keys) {
