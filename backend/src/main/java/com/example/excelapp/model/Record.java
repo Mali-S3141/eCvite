@@ -7,7 +7,7 @@ import lombok.*;
 import java.time.LocalDate;
 
 @Entity
-@Table(name = "records")
+@Table(name = "recipients")
 @Getter
 @Setter
 @NoArgsConstructor
@@ -23,7 +23,8 @@ public class Record {
     @JsonIgnore
     private User user;
 
-    @Column(name = "hash_code")
+    // מחושב אוטומטית ב-DB (טריגר של רחלי) - הקוד שלנו לא קובע/משנה את הערך הזה בכלל
+    @Column(name = "hash_code", insertable = false, updatable = false)
     private String hashCode;
 
     @Column
