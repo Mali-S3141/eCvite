@@ -2,6 +2,11 @@
 import { useLocation, useNavigate } from 'react-router-dom';
 import { Box, Container, Typography, Button, Paper, Stack } from '@mui/material';
 
+function getDisplayName(row) {
+  if (row.display) return row.display;
+  return [row.man, row.woman ? `ו${row.woman}` : '', row.lastName].filter(Boolean).join(' ');
+}
+
 export default function PrintPreviewPage() {
   const location = useLocation();
   const navigate = useNavigate();
@@ -10,9 +15,9 @@ export default function PrintPreviewPage() {
 const { selectedRows = [], selectedItems = [], labelSize = 'medium', printer = '' } = location.state || {};  
   // 🧪 נתוני בדיקה זמניים כדי שתוכלי לעצב ולראות את המדבקות עכשיו!
   const mockRows = [
-    { id: 1, name: "ישראל ישראלי", city: "בני ברק", street: "רבי עקיבא", houseNumber: "45" },
-    { id: 2, name: "אלחנן כהן", city: "ירושלים", street: "יפו", houseNumber: "12" },
-    { id: 3, name: "אברהם לוי", city: "בני ברק", street: "חזון איש", houseNumber: "8" }
+    { id: 1, prefix: 'הרב', man: 'ישראל', woman: '', lastName: 'ישראלי', city: 'בני ברק', street: 'רבי עקיבא', houseNo: '45' },
+    { id: 2, prefix: '', man: 'אלחנן', woman: '', lastName: 'כהן', city: 'ירושלים', street: 'יפו', houseNo: '12' },
+    { id: 3, prefix: '', man: 'אברהם', woman: '', lastName: 'לוי', city: 'בני ברק', street: 'חזון איש', houseNo: '8' }
   ];
 
   // קביעת הרשומות להצגה לפי מה שהתקבל (או שימוש במוק)
@@ -84,19 +89,19 @@ const { selectedRows = [], selectedItems = [], labelSize = 'medium', printer = '
                 }}
               >
                 {/* שורת השם המכובדת */}
-                <Typography 
-                  variant={labelSize === 'small' ? 'body1' : labelSize === 'large' ? 'h4' : 'h5'} 
+                <Typography
+                  variant={labelSize === 'small' ? 'body1' : labelSize === 'large' ? 'h4' : 'h5'}
                   sx={{ fontWeight: 'bold', mb: 1, color: '#000000', textAlign: 'center' }}
                 >
-                  לכבוד הרב {row.name}
+                  לכבוד {row.prefix || 'הרב'} {getDisplayName(row)} {row.suffix || ''}
                 </Typography>
-                
+
                 {/* שורת הכתובת */}
-                <Typography 
-                  variant={labelSize === 'small' ? 'caption' : labelSize === 'large' ? 'h5' : 'h6'} 
+                <Typography
+                  variant={labelSize === 'small' ? 'caption' : labelSize === 'large' ? 'h5' : 'h6'}
                   sx={{ color: '#333333', textAlign: 'center' }}
                 >
-                  {row.street} {row.houseNumber}, {row.city}
+                  {row.street} {row.houseNo}, {row.city} {row.country || ''}
                 </Typography>
               </Box>
             ))
