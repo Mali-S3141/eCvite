@@ -139,12 +139,18 @@ const handleSave = async (updatedRows) => {
     if (!user?.phone) return;
 
     try {
-      await api.importRecords(user.phone, rows);
+      const res = await api.importRecords(user.phone, rows);
+      const skipped = res.data?.skipped || 0;
+      setError(
+        skipped > 0
+          ? `הייבוא הושלם: ${skipped} שורות דולגו כי הן זהות לאורחים שכבר קיימים.`
+          : ''
+      );
       await loadRecords();
     } catch (err) {
-      setError('לא ניתן לייבא רשומות לשרת. הייבוא בוצע באופן מקומי.');
-      saveLocalRecords(user.phone, rows);
-      setRecords(rows);
+      console.error('❌ שגיאה בייבוא לשרת:', err);
+      setError('לא ניתן היה לייבא רשומות לשרת. הייבוא לא בוצע.');
+      // לא מציגים כאן את rows הגולמיים בטבלה - הם עלולים להגיע בלי id ולהקריס את הרשת
     }
   };
 

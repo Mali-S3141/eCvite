@@ -3,6 +3,7 @@ package com.example.excelapp.controller;
 import com.example.excelapp.model.Record;
 import com.example.excelapp.model.User;
 import com.example.excelapp.repository.UserRepository;
+import com.example.excelapp.service.ImportResult;
 import com.example.excelapp.service.RecordService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -72,7 +73,7 @@ public class RecordsController {
     }
 
     @PostMapping("/import")
-    public List<Record> importRecords(@RequestBody Map<String, Object> request) {
+    public ImportResult importRecords(@RequestBody Map<String, Object> request) {
         String phone = (String) request.get("phone");
         @SuppressWarnings("unchecked")
         List<Map<String, String>> values = (List<Map<String, String>>) request.get("records");

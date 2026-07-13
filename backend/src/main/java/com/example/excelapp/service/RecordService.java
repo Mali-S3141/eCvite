@@ -7,10 +7,16 @@ import jakarta.persistence.EntityManager;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 @Service
@@ -103,8 +109,8 @@ public class RecordService {
     }
 
     @Transactional
-    public List<Record> importRecords(User user, List<Map<String, String>> values) {
-        List<Record> records = values.stream().map(data -> Record.builder()
+    public ImportResult importRecords(User user, List<Map<String, String>> values) {
+        List<Record> candidates = values.stream().map(data -> Record.builder()
                 .user(user)
                 .prefix(getValue(data, "prefix", "קידומת"))
                 .man(getValue(data, "man", "בעל"))
@@ -127,11 +133,51 @@ public class RecordService {
                 .build())
                 .collect(Collectors.toList());
 
-        List<Record> saved = recordRepository.saveAll(records);
+        // מחשבים מראש את אותו hash_code שהטריגר ב-DB יחשב (טלפון + בעל/אישה + שם משפחה),
+        // כדי לדלג מראש על "אורחים" כפולים ולא להפיל את כל הייבוא בגלל שורה אחת כפולה
+        List<String> candidateHashes = new ArrayList<>();
+        Set<String> hashes = new HashSet<>();
+        for (Record r : candidates) {
+            String hash = computeHash(r.getPhone(), r.getMan(), r.getWoman(), r.getLastName());
+            candidateHashes.add(hash);
+            hashes.add(hash);
+        }
+
+        Set<String> existingHashes = new HashSet<>(recordRepository.findExistingHashCodes(hashes));
+        Set<String> seenInBatch = new HashSet<>();
+        List<Record> toInsert = new ArrayList<>();
+        int skipped = 0;
+        for (int i = 0; i < candidates.size(); i++) {
+            String hash = candidateHashes.get(i);
+            if (existingHashes.contains(hash) || !seenInBatch.add(hash)) {
+                skipped++;
+                continue;
+            }
+            toInsert.add(candidates.get(i));
+        }
+
+        List<Record> saved = recordRepository.saveAll(toInsert);
         recordRepository.flush();
         // ה-hash_code נקבע ע"י טריגר ב-DB - מרעננים כל רשומה כדי לקבל את הערך שהוא יצר
         saved.forEach(entityManager::refresh);
-        return saved;
+        return new ImportResult(saved, skipped);
+    }
+
+    // חייב להיות זהה בדיוק לפונקציית ה-DB create_recipient_hash(), אחרת נחשוב שרשומה לא כפולה בזמן שהיא כן
+    private String computeHash(String phone, String man, String woman, String lastName) {
+        String namePart = (man != null && !man.isEmpty()) ? man : (woman != null ? woman : "");
+        String base = (phone != null ? phone : "") + namePart + (lastName != null ? lastName : "");
+        try {
+            MessageDigest md = MessageDigest.getInstance("MD5");
+            byte[] digest = md.digest(base.getBytes(StandardCharsets.UTF_8));
+            StringBuilder sb = new StringBuilder();
+            for (byte b : digest) {
+                sb.append(String.format("%02x", b));
+            }
+            return sb.toString();
+        } catch (NoSuchAlgorithmException e) {
+            throw new RuntimeException(e);
+        }
     }
 
     private String getValue(Map<String, String> data, String... keys) {
