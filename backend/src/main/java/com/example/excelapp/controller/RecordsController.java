@@ -48,6 +48,7 @@ public class RecordsController {
                 .mail(getString(data, "mail"))
                 .country(getString(data, "country"))
                 .city(getString(data, "city"))
+                .neighborhood(getString(data, "neighborhood"))
                 .street(getString(data, "street"))
                 .houseNo(getString(data, "houseNo"))
                 .belongsTo(getString(data, "belongsTo"))
@@ -76,7 +77,7 @@ public class RecordsController {
     public ImportResult importRecords(@RequestBody Map<String, Object> request) {
         String phone = (String) request.get("phone");
         @SuppressWarnings("unchecked")
-        List<Map<String, String>> values = (List<Map<String, String>>) request.get("records");
+        List<Map<String, Object>> values = (List<Map<String, Object>>) request.get("records");
         User user = userRepository.findByPhone(phone).orElseThrow();
         return recordService.importRecords(user, values);
     }

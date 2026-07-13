@@ -23,10 +23,12 @@ import java.util.stream.Collectors;
 public class RecordService {
     private final RecordRepository recordRepository;
     private final EntityManager entityManager;
+    private final RecordInserter recordInserter;
 
-    public RecordService(RecordRepository recordRepository, EntityManager entityManager) {
+    public RecordService(RecordRepository recordRepository, EntityManager entityManager, RecordInserter recordInserter) {
         this.recordRepository = recordRepository;
         this.entityManager = entityManager;
+        this.recordInserter = recordInserter;
     }
 
     public List<Record> findByUser(User user) {
@@ -100,6 +102,7 @@ public class RecordService {
                 || !Objects.equals(a.getMail(), b.getMail())
                 || !Objects.equals(a.getCountry(), b.getCountry())
                 || !Objects.equals(a.getCity(), b.getCity())
+                || !Objects.equals(a.getNeighborhood(), b.getNeighborhood())
                 || !Objects.equals(a.getStreet(), b.getStreet())
                 || !Objects.equals(a.getHouseNo(), b.getHouseNo())
                 || !Objects.equals(a.getBelongsTo(), b.getBelongsTo())
@@ -109,7 +112,7 @@ public class RecordService {
     }
 
     @Transactional
-    public ImportResult importRecords(User user, List<Map<String, String>> values) {
+    public ImportResult importRecords(User user, List<Map<String, Object>> values) {
         List<Record> candidates = values.stream().map(data -> Record.builder()
                 .user(user)
                 .prefix(getValue(data, "prefix", "קידומת"))
@@ -120,8 +123,9 @@ public class RecordService {
                 .motherName(getValue(data, "motherName", "mother_name", "שם האם"))
                 .phone(getValue(data, "phone", "טלפון"))
                 .mail(getValue(data, "mail", "email", "מייל"))
-                .country(getValue(data, "country", "מדינה"))
+                .country(getValue(data, "country", "מדינה", "ארץ"))
                 .city(getValue(data, "city", "עיר"))
+                .neighborhood(getValue(data, "neighborhood", "שכונה"))
                 .street(getValue(data, "street", "רחוב"))
                 .houseNo(getValue(data, "houseNo", "house_no", "houseNumber", "house_number", "מספר בית", "מס' בית"))
                 .belongsTo(getValue(data, "belongsTo", "belongs_to", "שייך ל"))
@@ -156,10 +160,20 @@ public class RecordService {
             toInsert.add(candidates.get(i));
         }
 
-        List<Record> saved = recordRepository.saveAll(toInsert);
-        recordRepository.flush();
-        // ה-hash_code נקבע ע"י טריגר ב-DB - מרעננים כל רשומה כדי לקבל את הערך שהוא יצר
-        saved.forEach(entityManager::refresh);
+        // מסלול מהיר: מנסים לשמור הכל בבת אחת (כמו קודם - מהיר). רק אם זה נכשל
+        // (למשל התנגשות אמיתית שהבדיקה המוקדמת לא תפסה), עוברים למסלול איטי שורה-שורה
+        List<Record> saved = recordInserter.saveAllOrNull(toInsert);
+        if (saved == null) {
+            saved = new ArrayList<>();
+            for (Record record : toInsert) {
+                Record result = recordInserter.saveOrSkip(record);
+                if (result != null) {
+                    saved.add(result);
+                } else {
+                    skipped++;
+                }
+            }
+        }
         return new ImportResult(saved, skipped);
     }
 
@@ -180,10 +194,12 @@ public class RecordService {
         }
     }
 
-    private String getValue(Map<String, String> data, String... keys) {
+    // ערכים מ-Excel יכולים להגיע כמספר (Integer/Double) ולא רק כטקסט - תמיד ממירים בבטחה למחרוזת
+    private String getValue(Map<String, Object> data, String... keys) {
         for (String key : keys) {
-            if (data.containsKey(key) && data.get(key) != null) {
-                String value = data.get(key).trim();
+            Object raw = data.get(key);
+            if (raw != null) {
+                String value = String.valueOf(raw).trim();
                 if (!value.isEmpty()) {
                     return value;
                 }

@@ -58,6 +58,9 @@ public class Record {
     private String city;
 
     @Column
+    private String neighborhood;
+
+    @Column
     private String street;
 
     @Column(name = "house_no")

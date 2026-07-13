@@ -37,6 +37,47 @@ export function matchExcelHeaders(headers, columns) {
   return { matched, unmatched };
 }
 
+function getPossibleValuesList(column) {
+  return (column.possibleValues ?? []).map((v) => normalize(v)).filter(Boolean);
+}
+
+// לעמודות שלא הצליחו להתאים לפי הכותרת - בודקים אם הערכים שבתוך העמודה עצמה
+// מתאימים ל"ערכים אפשריים" של שדה כלשהו (כמו קידומת/סיומת), בלי קשר לכותרת
+export function matchByValues(unmatchedHeaders, rows, columns) {
+  const matched = {};
+  const stillUnmatched = [];
+  const candidateColumns = columns.filter((c) => (c.possibleValues ?? []).length > 0);
+
+  unmatchedHeaders.forEach((header) => {
+    const distinctValues = [...new Set(rows.map((row) => normalize(row[header])).filter(Boolean))];
+
+    if (distinctValues.length === 0) {
+      stillUnmatched.push(header);
+      return;
+    }
+
+    let bestColumn = null;
+    let bestRatio = 0;
+    candidateColumns.forEach((column) => {
+      const possible = getPossibleValuesList(column);
+      const matchCount = distinctValues.filter((v) => possible.includes(v)).length;
+      const ratio = matchCount / distinctValues.length;
+      if (ratio > bestRatio) {
+        bestRatio = ratio;
+        bestColumn = column;
+      }
+    });
+
+    if (bestColumn && bestRatio > 0.5) {
+      matched[header] = bestColumn.technicalName;
+    } else {
+      stillUnmatched.push(header);
+    }
+  });
+
+  return { matched, unmatched: stillUnmatched };
+}
+
 // ממפה מחדש את השורות מהקובץ לפי מפת "כותרת מקורית -> שם טכני שלנו"
 export function remapRows(rows, headerToKeyMap) {
   return rows.map((row) => {

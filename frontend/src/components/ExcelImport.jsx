@@ -1,19 +1,20 @@
 import { useState } from 'react';
 import { Button, Typography, Box } from '@mui/material';
 import * as XLSX from 'xlsx';
-import { getExcelColumns } from '../services/excelColumnsCache';
-import { matchExcelHeaders, remapRows } from '../utils/excelColumnMatcher';
+import api from '../services/api';
+import { getExcelColumns, invalidateExcelColumnsCache } from '../services/excelColumnsCache';
+import { matchExcelHeaders, matchByValues, remapRows } from '../utils/excelColumnMatcher';
+import ColumnMatchDialog, { IGNORE_VALUE } from './ColumnMatchDialog';
 
 export default function ExcelImport({ onImport, onOpenPrint }) {
   const [fileName, setFileName] = useState('');
-  const [unmatchedCount, setUnmatchedCount] = useState(0);
   const [matchError, setMatchError] = useState('');
+  const [pending, setPending] = useState(null); // { json, matched, unmatchedHeaders, columns }
 
   const handleFile = async (event) => {
     const file = event.target.files?.[0];
     if (!file) return;
     setFileName(file.name);
-    setUnmatchedCount(0);
     setMatchError('');
 
     const data = await file.arrayBuffer();
@@ -32,10 +33,14 @@ export default function ExcelImport({ onImport, onOpenPrint }) {
       const headers = Object.keys(json[0]);
       const { matched, unmatched } = matchExcelHeaders(headers, columns);
 
-      if (unmatched.length > 0) {
-        // שלב הבא: מסך שיאפשר להתאים ידנית את העמודות האלה. בינתיים הן מדולגות ולא מיובאות.
-        setUnmatchedCount(unmatched.length);
-        console.warn('עמודות שלא הותאמו אוטומטית:', unmatched);
+      // עמודות שלא זוהו לפי הכותרת - ננסה לזהות לפי הערכים שבתוכן (למשל סיומות/קידומות)
+      const { matched: matchedByValues, unmatched: stillUnmatched } = matchByValues(unmatched, json, columns);
+      Object.assign(matched, matchedByValues);
+
+      if (stillUnmatched.length > 0) {
+        // מציגים למשתמשת מסך התאמה ידנית - הייבוא ימשיך רק אחרי שהיא תבחר/תדלג
+        setPending({ json, matched, unmatchedHeaders: stillUnmatched, columns });
+        return;
       }
 
       onImport(remapRows(json, matched));
@@ -44,6 +49,42 @@ export default function ExcelImport({ onImport, onOpenPrint }) {
       setMatchError('לא ניתן היה להתאים עמודות אוטומטית (השרת לא זמין) - הקובץ יובא כמו שהוא.');
       onImport(json);
     }
+  };
+
+  const handleDialogConfirm = async (choices) => {
+    const { json, matched, unmatchedHeaders } = pending;
+    setPending(null);
+
+    const finalMatched = { ...matched };
+    const aliasesToSave = [];
+    unmatchedHeaders.forEach((header) => {
+      const technicalName = choices[header];
+      if (technicalName && technicalName !== IGNORE_VALUE) {
+        finalMatched[header] = technicalName;
+        aliasesToSave.push({ header, technicalName });
+      }
+    });
+
+    // שומרים את הבחירה כ"כינוי" חדש בטבלה - כדי שבפעם הבאה זה יזוהה אוטומטית
+    if (aliasesToSave.length > 0) {
+      await Promise.all(
+        aliasesToSave.map(({ header, technicalName }) =>
+          api.addExcelColumnAlias(technicalName, header).catch((err) => {
+            console.error('לא ניתן היה לשמור את הכינוי החדש:', err);
+          })
+        )
+      );
+      // מבטלים את המטמון כדי שהייבוא הבא (גם באותה טעינת דף) יכיר את הכינוי החדש מיד
+      invalidateExcelColumnsCache();
+    }
+
+    onImport(remapRows(json, finalMatched));
+  };
+
+  const handleDialogCancel = () => {
+    const { json, matched } = pending;
+    setPending(null);
+    onImport(remapRows(json, matched));
   };
 
   return (
@@ -56,15 +97,19 @@ export default function ExcelImport({ onImport, onOpenPrint }) {
         הדפסה
        </Button>
       {fileName && <Typography>{fileName}</Typography>}
-      {unmatchedCount > 0 && (
-        <Typography color="error" variant="body2">
-          {unmatchedCount} עמודות מהקובץ לא זוהו אוטומטית ולא יובאו (בקרוב: אפשרות להתאים ידנית)
-        </Typography>
-      )}
       {matchError && (
         <Typography color="error" variant="body2">
           {matchError}
         </Typography>
+      )}
+      {pending && (
+        <ColumnMatchDialog
+          open
+          unmatchedHeaders={pending.unmatchedHeaders}
+          columns={pending.columns}
+          onConfirm={handleDialogConfirm}
+          onCancel={handleDialogCancel}
+        />
       )}
     </Box>
   );

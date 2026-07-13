@@ -1,24 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Box, Button, Paper, Stack, Typography, TextField, Chip } from '@mui/material';
 import { DataGrid, GridToolbar } from '@mui/x-data-grid';
+import { getExcelColumns } from '../services/excelColumnsCache';
 
-const defaultColumns = [
-  { field: 'prefix', headerName: 'קידומת', width: 100, editable: true },
-  { field: 'man', headerName: 'בעל', width: 150, editable: true },
-  { field: 'woman', headerName: 'אישה', width: 150, editable: true },
-  { field: 'lastName', headerName: 'שם משפחה', width: 150, editable: true },
-  { field: 'suffix', headerName: 'סיומת', width: 100, editable: true },
-  { field: 'fatherName', headerName: 'שם האב', width: 150, editable: true },
-  { field: 'motherName', headerName: 'שם האם', width: 150, editable: true },
-  { field: 'phone', headerName: 'טלפון', width: 150, editable: true },
-  { field: 'mail', headerName: 'מייל', width: 200, editable: true },
-  { field: 'country', headerName: 'מדינה', width: 120, editable: true },
-  { field: 'city', headerName: 'עיר', width: 140, editable: true },
-  { field: 'street', headerName: 'רחוב', width: 150, editable: true },
-  { field: 'houseNo', headerName: 'מס\' בית', width: 100, editable: true },
-  { field: 'belongsTo', headerName: 'שייך ל', width: 150, editable: true },
-  { field: 'display', headerName: 'תצוגה', width: 180, editable: true },
-  { field: 'print', headerName: 'הדפסה', width: 100, editable: true, type: 'boolean' },
+// שדות מערכת/ביקורת (לא "פרטי אורח") - לא מנוהלים דרך excel_columns, נשארים קבועים בקוד
+const systemColumns = [
   { field: 'hashCode', headerName: 'מפתח', width: 120, editable: false },
   { field: 'changed', headerName: 'שונה', width: 100, editable: false, type: 'boolean' },
   { field: 'changeDate', headerName: 'תאריך שינוי', width: 130, editable: false },
@@ -40,8 +26,16 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
   const [sortModel, setSortModel] = useState([]);
   const [activeFilters, setActiveFilters] = useState([]);
   const [inputValue, setInputValue] = useState('');
+  const [fieldDefs, setFieldDefs] = useState([]);
   const appliedInitialSelection = useRef(false);
 
+  // סדר העמודות ומה מוצג כברירת מחדל נקבעים ב-excel_columns (ב-Neon), לא בקוד -
+  // נטען פעם אחת (getExcelColumns ממטמנת) ולא בכל טעינה מחדש
+  useEffect(() => {
+    getExcelColumns()
+      .then(setFieldDefs)
+      .catch(() => setFieldDefs([]));
+  }, []);
 
   useEffect(() => {
     setRows(records)
@@ -77,6 +71,7 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
       mail: '',
       country: '',
       city: '',
+      neighborhood: '',
       street: '',
       houseNo: '',
       belongsTo: '',
@@ -153,6 +148,7 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
           row.mail?.toLowerCase().includes(word) ||
           row.country?.toLowerCase().includes(word) ||
           row.city?.toLowerCase().includes(word) ||
+          row.neighborhood?.toLowerCase().includes(word) ||
           row.street?.toLowerCase().includes(word) ||
           row.houseNo?.toLowerCase().includes(word) ||
           row.belongsTo?.toLowerCase().includes(word) ||
@@ -161,9 +157,21 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
       });
     });
   }, [rows, activeFilters, inputValue]);
- const columns = useMemo(
-    () => [
-      ...defaultColumns,
+ const columns = useMemo(() => {
+    const dynamicColumns = fieldDefs
+      .slice()
+      .sort((a, b) => (a.defaultOrder ?? 999) - (b.defaultOrder ?? 999))
+      .map((f) => ({
+        field: f.technicalName,
+        headerName: f.displayName,
+        width: f.technicalName === 'print' ? 100 : 150,
+        editable: true,
+        type: f.technicalName === 'print' ? 'boolean' : undefined,
+      }));
+
+    return [
+      ...dynamicColumns,
+      ...systemColumns,
       {
         field: 'actions',
         headerName: 'פעולות',
@@ -172,9 +180,22 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
         filterable: false,
         renderCell: () => <Typography variant="body2">עריכה</Typography>,
       },
-    ],
-    []
-  );
+    ];
+  }, [fieldDefs]);
+
+  // שדות עם סדר תצוגה 0 (או ללא סדר) מוסתרים כברירת מחדל, לפי ההגדרה ב-excel_columns
+  const [columnVisibilityModel, setColumnVisibilityModel] = useState(SYSTEM_FIELDS_HIDDEN_BY_DEFAULT);
+
+  useEffect(() => {
+    if (fieldDefs.length === 0) return;
+    const model = { ...SYSTEM_FIELDS_HIDDEN_BY_DEFAULT };
+    fieldDefs.forEach((f) => {
+      if (!f.defaultOrder) {
+        model[f.technicalName] = false;
+      }
+    });
+    setColumnVisibilityModel(model);
+  }, [fieldDefs]);
 
   return (
     <Paper sx={{ width: '100%' }}>
@@ -246,13 +267,11 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
             backgroundColor: '#f5f5f5',
           },
         }}
+        columnVisibilityModel={columnVisibilityModel}
+        onColumnVisibilityModelChange={(model) => setColumnVisibilityModel(model)}
         initialState={{
           pagination: {
             paginationModel: { pageSize: 25 },
-          },
-          //הגדרה שמסתירה את שדות המערכת כברירת מחדל (DataGrid initialState)
-          columns: {
-            columnVisibilityModel: SYSTEM_FIELDS_HIDDEN_BY_DEFAULT,
           },
         }}
         pageSizeOptions={[25, 50, 100]}
