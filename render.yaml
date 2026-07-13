@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: excel-app-backend
+    runtime: docker
+    region: oregon
+    envVars:
+      - key: NEON_DB_URL
+        sync: false
+      - key: NEON_DB_USER
+        sync: false
+      - key: NEON_DB_PASS
+        sync: false
