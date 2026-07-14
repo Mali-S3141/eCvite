@@ -2,7 +2,7 @@ import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import LoginPage from './pages/LoginPage';
 import DashboardPage from './pages/DashboardPage';
 import PrintPreviewPage from './pages/PrintPreviewPage'; // עמוד חדש שניצור
-
+import RegisterPage from "./pages/RegisterPage";
 function App() {
   // useLocation גורם ל-App להתעדכן בכל ניווט, כדי ש-loggedIn ייבדק מחדש אחרי login/logout
   useLocation();
@@ -16,7 +16,7 @@ function App() {
         element={loggedIn ? <DashboardPage /> : <Navigate to="/login" replace />}
       />
       <Route path="*" element={<Navigate to={loggedIn ? '/' : '/login'} replace />} />
-
+        <Route path="/register" element={<RegisterPage />} />
       {/* הוספת הנתיב החדש */}
       <Route path="/print-preview" element={<PrintPreviewPage />} />
       <Route path="*" element={<Navigate to={loggedIn ? '/' : '/login'} replace />} />
