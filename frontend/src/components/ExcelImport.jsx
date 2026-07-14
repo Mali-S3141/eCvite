@@ -6,6 +6,21 @@ import { getExcelColumns, invalidateExcelColumnsCache } from '../services/excelC
 import { matchExcelHeaders, matchByValues, remapRows } from '../utils/excelColumnMatcher';
 import ColumnMatchDialog, { IGNORE_VALUE } from './ColumnMatchDialog';
 
+// Object.keys מקדימה כותרות שהן מספרים טהורים (כמו "1") להתחלה, גם אם הן בפועל העמודה
+// האחרונה בקובץ - קוראים את שורת הכותרות כמערך (ששומר על הסדר האמיתי מהקובץ) ובונים
+// לפיו את אותם שמות "__EMPTY"/"__EMPTY_1" ש-sheet_to_json הרגיל היה מייצר, כדי לסדר נכון
+function getTrueHeaderOrder(sheet) {
+  const headerRow = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' })[0] || [];
+  let emptyCount = 0;
+  return headerRow.map((cell) => {
+    const text = String(cell ?? '').trim();
+    if (text) return text;
+    const name = emptyCount === 0 ? '__EMPTY' : `__EMPTY_${emptyCount}`;
+    emptyCount += 1;
+    return name;
+  });
+}
+
 export default function ExcelImport({ onImport, onOpenPrint }) {
   const [fileName, setFileName] = useState('');
   const [matchError, setMatchError] = useState('');
@@ -30,16 +45,24 @@ export default function ExcelImport({ onImport, onOpenPrint }) {
     try {
       // columns נטען פעם אחת בלבד (getExcelColumns ממטמנת), לא בכל ייבוא
       const columns = await getExcelColumns();
-      const headers = Object.keys(json[0]);
+      const trueOrder = getTrueHeaderOrder(sheet);
+      const headers = Object.keys(json[0]).sort(
+        (a, b) => trueOrder.indexOf(a) - trueOrder.indexOf(b)
+      );
       const { matched, unmatched } = matchExcelHeaders(headers, columns);
 
       // עמודות שלא זוהו לפי הכותרת - ננסה לזהות לפי הערכים שבתוכן (למשל סיומות/קידומות)
       const { matched: matchedByValues, unmatched: stillUnmatched } = matchByValues(unmatched, json, columns);
       Object.assign(matched, matchedByValues);
 
-      if (stillUnmatched.length > 0) {
+      // עמודות שאין בהן שום נתון בקובץ בכלל - אין טעם לשאול עליהן, פשוט מדלגים
+      const unmatchedWithData = stillUnmatched.filter((header) =>
+        json.some((row) => String(row[header] ?? '').trim() !== '')
+      );
+
+      if (unmatchedWithData.length > 0) {
         // מציגים למשתמשת מסך התאמה ידנית - הייבוא ימשיך רק אחרי שהיא תבחר/תדלג
-        setPending({ json, matched, unmatchedHeaders: stillUnmatched, columns });
+        setPending({ json, matched, unmatchedHeaders: unmatchedWithData, columns });
         return;
       }
 
@@ -107,6 +130,7 @@ export default function ExcelImport({ onImport, onOpenPrint }) {
           open
           unmatchedHeaders={pending.unmatchedHeaders}
           columns={pending.columns}
+          rows={pending.json}
           onConfirm={handleDialogConfirm}
           onCancel={handleDialogCancel}
         />

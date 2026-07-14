@@ -78,15 +78,18 @@ export function matchByValues(unmatchedHeaders, rows, columns) {
   return { matched, unmatched: stillUnmatched };
 }
 
-// ממפה מחדש את השורות מהקובץ לפי מפת "כותרת מקורית -> שם טכני שלנו"
+// ממפה מחדש את השורות מהקובץ לפי מפת "כותרת מקורית -> שם טכני שלנו".
+// אם שתי עמודות שונות בקובץ שויכו לאותו שדה (למשל "שליט"א" ו"פניה" ששתיהן שייכות ל"סיום") -
+// הערכים שלהן משורשרים יחד (עם רווח), במקום שהאחרונה תדרוס את הראשונה
 export function remapRows(rows, headerToKeyMap) {
   return rows.map((row) => {
     const newRow = {};
     Object.entries(row).forEach(([header, value]) => {
       const key = headerToKeyMap[header];
-      if (key) {
-        newRow[key] = value;
-      }
+      if (!key) return;
+      const stringValue = String(value ?? '').trim();
+      if (!stringValue) return;
+      newRow[key] = newRow[key] ? `${newRow[key]} ${stringValue}` : stringValue;
     });
     return newRow;
   });

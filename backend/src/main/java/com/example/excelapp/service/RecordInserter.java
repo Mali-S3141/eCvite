@@ -9,6 +9,8 @@ import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 
 @Service
 public class RecordInserter {
@@ -27,11 +29,25 @@ public class RecordInserter {
         try {
             List<Record> saved = recordRepository.saveAll(records);
             recordRepository.flush();
-            saved.forEach(entityManager::refresh);
+            applyGeneratedHashCodes(saved);
             return saved;
         } catch (DataIntegrityViolationException e) {
             return null;
         }
+    }
+
+    // ה-hash_code נקבע ע"י טריגר ב-DB - שאילתה גולמית אחת בשביל כל הרשומות ביחד,
+    // כדי לקבל את הערך העדכני בלי refresh נפרד לכל רשומה (איטי מאוד על ייבוא גדול)
+    private void applyGeneratedHashCodes(List<Record> saved) {
+        if (saved.isEmpty()) {
+            return;
+        }
+        List<Long> ids = saved.stream().map(Record::getId).collect(Collectors.toList());
+        Map<Long, String> hashById = recordRepository.findHashCodesByIds(ids).stream()
+                .collect(Collectors.toMap(
+                        row -> ((Number) row[0]).longValue(),
+                        row -> (String) row[1]));
+        saved.forEach(r -> r.setHashCode(hashById.get(r.getId())));
     }
 
     // המסלול האיטי: שומר רשומה אחת בטרנזקציה נפרדת משלה - רק כשהמסלול המהיר נכשל,

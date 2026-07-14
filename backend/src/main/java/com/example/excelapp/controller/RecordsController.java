@@ -51,9 +51,9 @@ public class RecordsController {
                 .neighborhood(getString(data, "neighborhood"))
                 .street(getString(data, "street"))
                 .houseNo(getString(data, "houseNo"))
+                .addressNote(getString(data, "addressNote"))
                 .belongsTo(getString(data, "belongsTo"))
                 .suffix(getString(data, "suffix"))
-                .display(getString(data, "display"))
                 .print(getBoolean(data, "print"))
                 .build())
                 .toList();

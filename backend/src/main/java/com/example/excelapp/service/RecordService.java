@@ -32,7 +32,7 @@ public class RecordService {
     }
 
     public List<Record> findByUser(User user) {
-        return recordRepository.findByUser(user);
+        return recordRepository.findByUserOrderByIdAsc(user);
     }
     @Transactional
     public List<Record> saveAll(User user, List<Record> records) {
@@ -42,10 +42,22 @@ public class RecordService {
 
         List<Record> saved = recordRepository.saveAll(toSave);
         recordRepository.flush();
-        // ה-hash_code נקבע ע"י טריגר ב-DB (לא על ידינו) - מרעננים כל רשומה כדי לקבל את הערך שהוא יצר
-        // (findAllById לבדו היה מחזיר את האובייקטים ה"ישנים" מהזיכרון, בלי ה-hash_code המעודכן)
-        saved.forEach(entityManager::refresh);
+        applyGeneratedHashCodes(saved);
         return saved;
+    }
+
+    // ה-hash_code נקבע ע"י טריגר ב-DB (לא על ידינו) - שאילתה גולמית אחת בשביל כל הרשומות
+    // ביחד, כדי לקבל את הערך העדכני בלי refresh נפרד לכל רשומה (שהיה איטי מאוד על ייבוא גדול)
+    private void applyGeneratedHashCodes(List<Record> saved) {
+        if (saved.isEmpty()) {
+            return;
+        }
+        List<Long> ids = saved.stream().map(Record::getId).collect(Collectors.toList());
+        Map<Long, String> hashById = recordRepository.findHashCodesByIds(ids).stream()
+                .collect(Collectors.toMap(
+                        row -> ((Number) row[0]).longValue(),
+                        row -> (String) row[1]));
+        saved.forEach(r -> r.setHashCode(hashById.get(r.getId())));
     }
 
     // מחיקה מפורשת של רשומות ספציפיות שנבחרו במסך (לא לפי "מה שחסר" ברשימה שנשלחה) -
@@ -105,9 +117,9 @@ public class RecordService {
                 || !Objects.equals(a.getNeighborhood(), b.getNeighborhood())
                 || !Objects.equals(a.getStreet(), b.getStreet())
                 || !Objects.equals(a.getHouseNo(), b.getHouseNo())
+                || !Objects.equals(a.getAddressNote(), b.getAddressNote())
                 || !Objects.equals(a.getBelongsTo(), b.getBelongsTo())
                 || !Objects.equals(a.getSuffix(), b.getSuffix())
-                || !Objects.equals(a.getDisplay(), b.getDisplay())
                 || !Objects.equals(a.getPrint(), b.getPrint());
     }
 
@@ -128,9 +140,9 @@ public class RecordService {
                 .neighborhood(getValue(data, "neighborhood", "שכונה"))
                 .street(getValue(data, "street", "רחוב"))
                 .houseNo(getValue(data, "houseNo", "house_no", "houseNumber", "house_number", "מספר בית", "מס' בית"))
+                .addressNote(getValue(data, "addressNote", "address_note", "הערת כתובת"))
                 .belongsTo(getValue(data, "belongsTo", "belongs_to", "שייך ל"))
                 .suffix(getValue(data, "suffix", "סיומת"))
-                .display(getValue(data, "display", "תצוגה"))
                 .print(false)
                 .changed(false)
                 .createdBy(user.getName())

@@ -66,14 +66,14 @@ public class Record {
     @Column(name = "house_no")
     private String houseNo;
 
+    @Column(name = "address_note")
+    private String addressNote;
+
     @Column(name = "belongs_to")
     private String belongsTo;
 
     @Column
     private String suffix;
-
-    @Column
-    private String display;
 
     @Column
     private Boolean print;
