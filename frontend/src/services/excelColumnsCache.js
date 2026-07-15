@@ -10,3 +10,9 @@ export function getExcelColumns() {
   }
   return cachedColumnsPromise;
 }
+
+// קוראים לזה אחרי ששומרים כינוי חדש (במסך ההתאמה הידנית), כדי שהקריאה הבאה
+// תביא את הרשימה המעודכנת מה-DB במקום להמשיך להשתמש בעותק הישן שבזיכרון
+export function invalidateExcelColumnsCache() {
+  cachedColumnsPromise = null;
+}

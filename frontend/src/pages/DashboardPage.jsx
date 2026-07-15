@@ -14,7 +14,9 @@ function getLoggedUser() {
 
 function getLocalRecords(phone) {
   const saved = localStorage.getItem(`records-${phone}`);
-  return saved ? JSON.parse(saved) : [];
+  if (!saved) return [];
+  // מתעלמים משורות בלי id (למשל שיור ישן מגרסה קודמת) - הן היו מקריסות את DataGrid
+  return JSON.parse(saved).filter((row) => row.id !== undefined && row.id !== null);
 }
 
 function saveLocalRecords(phone, rows) {
@@ -126,7 +128,7 @@ export default function DashboardPage() {
 
       console.log("2. שולח לבקאנד אחרי ניקוי:", cleanRows);
 
-      await api.saveRecipients(user.phone, cleanRows);
+      await api.saveRecords(user.phone, cleanRows);
 
       console.log("3. נשמר בהצלחה!");
 

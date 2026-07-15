@@ -2,6 +2,10 @@ package com.example.excelapp.model;
 
 import jakarta.persistence.*;
 import lombok.*;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
+
+import java.util.List;
 
 @Entity
 @Table(name = "excel_columns")
@@ -33,4 +37,9 @@ public class ExcelColumn {
     // רשימת שמות מקבילים אפשריים, מופרדים בפסיקים (העמודה עצמה היא טקסט רגיל, לא מערך)
     @Column(name = "aliases")
     private String aliases;
+
+    // ערכים אופייניים שיכולים להופיע בתוך התא עצמו (לא בכותרת) - למשל סיומות/קידומות
+    @JdbcTypeCode(SqlTypes.ARRAY)
+    @Column(name = "possible_values", columnDefinition = "text[]")
+    private List<String> possibleValues;
 }

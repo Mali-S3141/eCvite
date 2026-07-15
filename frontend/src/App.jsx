@@ -11,12 +11,11 @@ function App() {
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />
+      <Route path="/register" element={<RegisterPage />} />
       <Route
         path="/"
         element={loggedIn ? <DashboardPage /> : <Navigate to="/login" replace />}
       />
-      <Route path="*" element={<Navigate to={loggedIn ? '/' : '/login'} replace />} />
-        <Route path="/register" element={<RegisterPage />} />
       {/* הוספת הנתיב החדש */}
       <Route path="/print-preview" element={<PrintPreviewPage />} />
       <Route path="*" element={<Navigate to={loggedIn ? '/' : '/login'} replace />} />

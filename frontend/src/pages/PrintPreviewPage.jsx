@@ -124,7 +124,7 @@ const { selectedRows = [], selectedItems = [], labelSize = 'medium', printer = '
                   variant={layout.nameVariant}
                   sx={{ fontWeight: 'bold', mb: 1, color: '#000000', textAlign: 'center', fontFamily: 'inherit' }}
                 >
-                  לכבוד {row.prefix || 'הרב'} {getDisplayName(row)} {row.suffix || ''}
+                  לכבוד {row.prefix || ''} {getDisplayName(row)} {row.suffix || ''}
                 </Typography>
 
                 {/* שורת הכתובת */}

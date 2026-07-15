@@ -1,5 +1,6 @@
 package com.example.excelapp.entity;
 
+import com.example.excelapp.model.User;
 import jakarta.persistence.*;
 import lombok.Data;
 import lombok.NoArgsConstructor;
@@ -9,7 +10,7 @@ import lombok.NoArgsConstructor;
     @Table(name = "user_recipients")
     @Data
     @NoArgsConstructor
-    public class RecipientsUser {
+    public class UserRecipients {
         @Id
         @GeneratedValue(strategy = GenerationType.IDENTITY)
         private Long id;
@@ -22,6 +23,6 @@ import lombok.NoArgsConstructor;
 
         @ManyToOne
         @JoinColumn(name = "recipient_id")
-        private Recipients recipient;
+        private recipients recipient;
     }
 
