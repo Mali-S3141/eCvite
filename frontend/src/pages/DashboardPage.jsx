@@ -39,7 +39,7 @@ export default function DashboardPage() {
     return saved ? JSON.parse(saved) : [];
   });
 
-  
+
   const loadRecords = useCallback(async () => {
     if (!user?.phone) {
       setRecords([]);
@@ -47,10 +47,10 @@ export default function DashboardPage() {
       return;
     }
 
-  try {
+    try {
       setLoading(true);
       const response = await api.getRecords(user.phone);
-      
+
       //  שיפור: אם הבקאנד החזיר רשימה ריקה (כי ה-DB ריק/לא מחובר), נטען כגיבוי מהלוקאל
       if (response.data && response.data.length > 0) {
         setRecords(response.data);
@@ -75,14 +75,14 @@ export default function DashboardPage() {
   // 🌟 פותח את המודאל אוטומטית אם המשתמש לחץ על "שינוי הגדרות" בתצוגה המקדימה
   useEffect(() => {
     const cameFromPreview = sessionStorage.getItem('fromPreview');
-    
+
     if (cameFromPreview === 'true') {
       setIsPrintModalOpen(true);
       sessionStorage.removeItem('fromPreview'); // מנקים מיד כדי שלא יציק ברענונים הבאים
       sessionStorage.removeItem('savedSelectedIds');
     }
   }, []);
- //  מקפיץ אזהרה ברענן/סגירה רק אם הסטייט השתנה (כלומר יש שינויים שלא נשמרו)
+  //  מקפיץ אזהרה ברענן/סגירה רק אם הסטייט השתנה (כלומר יש שינויים שלא נשמרו)
   useEffect(() => {
     const handleBeforeUnload = (e) => {
       if (isTableDirty) {
@@ -113,29 +113,34 @@ export default function DashboardPage() {
       console.error('לא ניתן היה למחוק את הרשומות מהשרת:', err);
     }
   };
-const handleSave = async (updatedRows) => {
-  console.log("1. כפתור שמור נלחץ בדאשבורד!");
-  
-  if (!user?.phone) {
-    console.log("❌ השליחה נעצרה כי אין טלפון למשתמש:", user);
-    return;
-  }
+  const handleSave = async (updatedRows) => {
+    console.log("1. כפתור שמור נלחץ בדאשבורד!");
 
-  try {
-    console.log("2. שולח לבקאנד עבור טלפון:", user.phone, "את השורות:", updatedRows);
-    await api.saveRecords(user.phone, updatedRows);
-    console.log("3. השרת החזיר תשובה חיובית! נשמר בהצלחה.");
-    
-    saveLocalRecords(user.phone, updatedRows);
-    setIsTableDirty(false); 
-    await loadRecords();
-  } catch (err) {
-    console.error("❌ שגיאה בשליחה לבקאנד:", err);
-    setError('לא ניתן לשמור רשומות לשרת. השמירה תבצע באופן מקומי.');
-    saveLocalRecords(user.phone, updatedRows);
-    setRecords(updatedRows);
-  }
-};
+    if (!user?.phone) {
+      console.log("❌ השליחה נעצרת כי אין טלפון למשתמש:", user);
+      return;
+    }
+
+    try {
+      console.log("2. שולח לבקאנד:", updatedRows);
+
+      const cleanRows = updatedRows.map(({ hashCode, ...rest }) => rest);
+
+      console.log("2. שולח לבקאנד אחרי ניקוי:", cleanRows);
+
+      await api.saveRecords(user.phone, cleanRows);
+
+      console.log("3. נשמר בהצלחה!");
+
+      setIsTableDirty(false);
+      await loadRecords();
+
+    } catch (err) {
+      console.error("❌ שגיאה בשליחה לבקאנד:", err);
+      setError('לא ניתן לשמור רשומות לשרת. השמירה תבצע באופן מקומי.');
+      saveLocalRecords(user.phone, updatedRows);
+    }
+  }; // <-- זה היה חסר!
 
   const handleImport = async (rows) => {
     if (!user?.phone) return;
@@ -162,44 +167,43 @@ const handleSave = async (updatedRows) => {
   };
 
   return (
-    <Container maxWidth="xl" sx={{ mt: 2, mb: 2 }}>
-      <Box display="flex" justifyContent="space-between" alignItems="center" mb={1.5}>
-        <Typography variant="h5">לוח רשומות</Typography>
-        <Button variant="outlined" size="small" onClick={handleLogout}>
-          יציאה
-        </Button>
-      </Box>
+      <Container maxWidth="xl" sx={{ mt: 2, mb: 2 }}>
+        <Box display="flex" justifyContent="space-between" alignItems="center" mb={1.5}>
+          <Typography variant="h5">לוח רשומות</Typography>
+          <Button variant="outlined" size="small" onClick={handleLogout}>
+            יציאה
+          </Button>
+        </Box>
 
-      {error && (
-        <Typography color="error" variant="body2" mb={1}>
-          {error}
-        </Typography>
-      )}
+        {error && (
+            <Typography color="error" variant="body2" mb={1}>
+              {error}
+            </Typography>
+        )}
 
-      <Paper sx={{ p: 1, mb: 1.5 }}>
-        <ExcelImport onImport={handleImport} onOpenPrint={() => setIsPrintModalOpen(true)} />
-      </Paper>
+        <Paper sx={{ p: 1, mb: 1.5 }}>
+          <ExcelImport onImport={handleImport} onOpenPrint={() => setIsPrintModalOpen(true)} />
+        </Paper>
 
-     <DataTable
-        records={records}
-        loading={loading}
-        onSave={handleSave}
-        onAutoSave={handleAutoSaveLocal}
-        onSelectionChange={setSelectedRows}
-        onDeleteRows={handleDeleteRows}
-        initialSelectedIds={initialSelectedIds}
-      />
+        <DataTable
+            records={records}
+            loading={loading}
+            onSave={handleSave}
+            onAutoSave={handleAutoSaveLocal}
+            onSelectionChange={setSelectedRows}
+            onDeleteRows={handleDeleteRows}
+            initialSelectedIds={initialSelectedIds}
+        />
 
-      {/* רנדור המודאל והעברת הרשומות המסומנות אליו */}
-      <PrintModal 
-        open={isPrintModalOpen} 
-        onClose={() => setIsPrintModalOpen(false)}
-        selectedRows={selectedRows}
-      />
+        {/* רנדור המודאל והעברת הרשומות המסומנות אליו */}
+        <PrintModal
+            open={isPrintModalOpen}
+            onClose={() => setIsPrintModalOpen(false)}
+            selectedRows={selectedRows}
+        />
 
-      <Box mt={3} display="flex" justifyContent="flex-end" gap={2}>
-        <Button variant="contained">הדפס רשומות</Button>
-      </Box>
-    </Container>
-  );
-}
+        <Box mt={3} display="flex" justifyContent="flex-end" gap={2}>
+          <Button variant="contained">הדפס רשומות</Button>
+        </Box>
+      </Container>
+  );}

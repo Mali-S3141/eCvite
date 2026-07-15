@@ -1,0 +1,8 @@
+target/
+.git/
+.gitignore
+.DS_Store
+.env
+*.log
+node_modules/
+frontend/node_modules/
