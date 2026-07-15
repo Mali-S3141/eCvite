@@ -413,43 +413,95 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
     apiRef.current.scrollToIndexes({ rowIndex, colIndex });
     apiRef.current.setCellFocus(target.id, target.field);
     // עריכה כאן היא ברמת שורה (editMode="row") - פותחים את כל השורה לעריכה
-    // וממקדים בפועל בשדה הבעייתי הספציפי
+    // וממקדים בפועל בשדה הבעייתי הספציפי. אם השורה כבר במצב עריכה (למשל יש בה כמה
+    // שדות בעייתיים ברצף) - startRowEditMode היה זורק שגיאה, אז רק ממקדים מחדש
     const timer = setTimeout(() => {
-      apiRef.current.startRowEditMode({ id: target.id, fieldToFocus: target.field });
+      if (apiRef.current.getRowMode(target.id) === 'edit') {
+        apiRef.current.setCellFocus(target.id, target.field);
+      } else {
+        apiRef.current.startRowEditMode({ id: target.id, fieldToFocus: target.field });
+      }
     }, 50);
     return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [problemQueue, filteredRows]);
 
   return (
-    <Paper sx={{ width: '100%' }}>
-      <Box sx={{ p: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <Typography variant="h6">טבלת רשומות - עריכה בסגנון Excel</Typography>
-        <Stack direction="row" spacing={2}>
-          <Button variant="contained" onClick={handleAddRow}>
+    <Paper
+      sx={{
+        width: '100%',
+        borderRadius: 3,
+        overflow: 'hidden',
+        border: '1px solid #e6e8ec',
+        boxShadow: '0 6px 28px rgba(15, 23, 42, 0.06)',
+      }}
+    >
+      <Box
+        sx={{
+          p: 2.5,
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          borderBottom: '1px solid #eef0f3',
+          background: 'linear-gradient(180deg, #fbfcfe 0%, #ffffff 100%)',
+        }}
+      >
+        <Typography variant="h6" sx={{ fontWeight: 700, letterSpacing: '-0.01em', color: '#0f172a' }}>
+          טבלת רשומות - עריכה בסגנון Excel
+        </Typography>
+        <Stack direction="row" spacing={1.5}>
+          <Button
+            variant="contained"
+            onClick={handleAddRow}
+            sx={{
+              borderRadius: 2,
+              textTransform: 'none',
+              fontWeight: 600,
+              boxShadow: 'none',
+              bgcolor: '#4f46e5',
+              '&:hover': { bgcolor: '#4338ca', boxShadow: '0 6px 16px rgba(79, 70, 229, 0.28)' },
+            }}
+          >
             הוסף שורה
           </Button>
-          <Button variant="outlined" color="error" onClick={handleDeleteRows} disabled={!selectionModel.length}>
+          <Button
+            variant="outlined"
+            color="error"
+            onClick={handleDeleteRows}
+            disabled={!selectionModel.length}
+            sx={{ borderRadius: 2, textTransform: 'none', fontWeight: 600 }}
+          >
             מחק שורות
           </Button>
-          <Button variant="contained" onClick={handleSaveClick}>
+          <Button
+            variant="contained"
+            onClick={handleSaveClick}
+            sx={{
+              borderRadius: 2,
+              textTransform: 'none',
+              fontWeight: 600,
+              boxShadow: 'none',
+              bgcolor: '#0f172a',
+              '&:hover': { bgcolor: '#1e293b', boxShadow: '0 6px 16px rgba(15, 23, 42, 0.28)' },
+            }}
+          >
             שמור שינויים
           </Button>
         </Stack>
       </Box>
 
         {/* סרגל סינון ופילטור משולב */}
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 3, p: 1.5, bgcolor: '#f8f9fa', borderRadius: 1, border: '1px solid #e0e0e0' }}>
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, m: 2.5, mb: 3, p: 2, bgcolor: '#f8fafc', borderRadius: 2.5, border: '1px solid #eef0f3' }}>
         <Typography variant="body2" fontWeight="bold" color="text.secondary">סינון ופילטור מהיר:</Typography>
-        
+
         <TextField
           label="הקלידי ערך ולחצי Enter לנעילת סינון/פילטור..."
           variant="outlined"
           size="small"
           value={inputValue}
           onChange={handleInputChange}
-          onKeyDown={handleKeyDown}    
-          sx={{ width: 380, bgcolor: '#ffffff' }}
+          onKeyDown={handleKeyDown}
+          sx={{ width: 380, bgcolor: '#ffffff', '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
         />
 
         {/* תצוגת התגיות */}
@@ -475,7 +527,7 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
           size="small"
           value=""
           onChange={(e) => handleAddSecondarySort(e.target.value)}
-          sx={{ width: 180, bgcolor: '#ffffff' }}
+          sx={{ width: 180, bgcolor: '#ffffff', '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
         >
           {orderedFieldDefs
             .filter((f) => !secondarySortFields.includes(f.technicalName))
@@ -506,19 +558,25 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
 
         {/* כפתור איפוס מלא */}
         {(activeFilters.length > 0 || inputValue.trim() !== '' || sortModel.length > 0 || secondarySortFields.length > 0) && (
-          <Button variant="outlined" color="error" size="small" onClick={handleFullReset} sx={{ fontWeight: 'bold' }}>
+          <Button
+            variant="outlined"
+            color="error"
+            size="small"
+            onClick={handleFullReset}
+            sx={{ fontWeight: 700, borderRadius: 2, textTransform: 'none' }}
+          >
             בטל סינון/מיון
           </Button>
         )}
       </Box>
 
       {problemQueue.length > 0 && (
-        <Alert severity="warning" sx={{ mx: 2, mb: 2 }}>
+        <Alert severity="warning" sx={{ mx: 2.5, mb: 3, borderRadius: 2 }}>
           יש {problemQueue.length} שדות חובה ריקים או ערכים לא תקינים שצריך לתקן לפני השמירה - קופצים אוטומטית לשדה הבא שצריך תיקון, עד שהכל יתוקן ואז השמירה תתבצע.
         </Alert>
       )}
 
-   <Box ref={gridContainerRef}>
+   <Box ref={gridContainerRef} sx={{ px: 2.5, pb: 2.5 }}>
    <DataGrid
         apiRef={apiRef}
         autoHeight
@@ -534,13 +592,47 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
           },
         }}
         getCellClassName={(params) => {
+          // התא הספציפי שקפצנו אליו כרגע (הראשון בתור התיקונים) - מודגש הרבה יותר חזק
+          // מכל שאר תאי הבעיה, כדי שיהיה ברור בבירור לאיפה קפצו
+          if (
+            problemQueue.length > 0 &&
+            String(params.id) === String(problemQueue[0].id) &&
+            params.field === problemQueue[0].field
+          ) {
+            return 'current-problem-cell';
+          }
           if (requiredFields.has(params.field) && !params.value) return 'required-empty-cell';
           if (isValueInvalid(params.field, params.value)) return 'invalid-value-cell';
           return '';
         }}
         sx={{
+          border: 'none',
+          borderRadius: 2,
+          fontSize: '0.875rem',
           '& .MuiDataGrid-columnHeaders': {
-            backgroundColor: '#f5f5f5',
+            backgroundColor: '#f8fafc',
+            borderBottom: '2px solid #e2e8f0',
+          },
+          '& .MuiDataGrid-columnHeaderTitle': {
+            fontWeight: 700,
+            color: '#334155',
+            letterSpacing: '0.01em',
+          },
+          '& .MuiDataGrid-cell': {
+            borderBottom: '1px solid #f1f5f9',
+          },
+          '& .MuiDataGrid-cell:focus, & .MuiDataGrid-cell:focus-within': {
+            outline: 'none',
+          },
+          '& .MuiDataGrid-row': {
+            transition: 'background-color 0.15s ease',
+          },
+          '& .MuiDataGrid-row:hover': {
+            backgroundColor: '#f8fafc',
+          },
+          '& .MuiDataGrid-footerContainer': {
+            borderTop: '2px solid #e2e8f0',
+            backgroundColor: '#f8fafc',
           },
           '& .required-empty-cell': {
             outline: '2px solid #d32f2f',
@@ -549,6 +641,16 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
           '& .invalid-value-cell': {
             outline: '2px solid #ed6c02',
             outlineOffset: '-2px',
+          },
+          '& .current-problem-cell': {
+            outline: '3px solid #e11d48',
+            outlineOffset: '-3px',
+            backgroundColor: '#fff1f2 !important',
+            animation: 'current-problem-pulse 1.4s ease-in-out infinite',
+          },
+          '@keyframes current-problem-pulse': {
+            '0%, 100%': { boxShadow: '0 0 0 4px rgba(225, 29, 72, 0.35)' },
+            '50%': { boxShadow: '0 0 0 9px rgba(225, 29, 72, 0.08)' },
           },
         }}
         columnVisibilityModel={columnVisibilityModel}
