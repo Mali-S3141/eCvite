@@ -21,6 +21,13 @@ function getTrueHeaderOrder(sheet) {
   });
 }
 
+// שורה שאין בה כלום בעמודת מדינה - כנראה כי לא כתבו שם משהו במיוחד - מקבלת כברירת מחדל "ישראל"
+function applyDefaultCountry(rows) {
+  return rows.map((row) =>
+    String(row.country ?? '').trim() ? row : { ...row, country: 'ישראל' }
+  );
+}
+
 export default function ExcelImport({ onImport, onOpenPrint }) {
   const [fileName, setFileName] = useState('');
   const [matchError, setMatchError] = useState('');
@@ -34,8 +41,18 @@ export default function ExcelImport({ onImport, onOpenPrint }) {
 
     const data = await file.arrayBuffer();
     const workbook = XLSX.read(data);
-    const sheet = workbook.Sheets[workbook.SheetNames[0]];
-    const json = XLSX.utils.sheet_to_json(sheet, { defval: '' });
+
+    // קוראים את כל הגליונות בקובץ (לא רק את הראשון) - כדי לא לפספס גליון נוסף
+    // (למשל גליון של כתובות בארץ וגליון נפרד של כתובות בחו"ל) - כולם מיובאים לאותה טבלה
+    const sheetsData = workbook.SheetNames.map((name) => {
+      const sheet = workbook.Sheets[name];
+      return {
+        json: XLSX.utils.sheet_to_json(sheet, { defval: '' }),
+        trueOrder: getTrueHeaderOrder(sheet),
+      };
+    }).filter((s) => s.json.length > 0);
+
+    const json = sheetsData.flatMap((s) => s.json);
 
     if (json.length === 0) {
       onImport(json);
@@ -45,10 +62,23 @@ export default function ExcelImport({ onImport, onOpenPrint }) {
     try {
       // columns נטען פעם אחת בלבד (getExcelColumns ממטמנת), לא בכל ייבוא
       const columns = await getExcelColumns();
-      const trueOrder = getTrueHeaderOrder(sheet);
-      const headers = Object.keys(json[0]).sort(
-        (a, b) => trueOrder.indexOf(a) - trueOrder.indexOf(b)
-      );
+
+      // בונים רשימת כותרות מאוחדת מכל הגליונות יחד (בלי כפילויות, לפי סדר הופעה),
+      // כדי שההתאמה תתייחס לכל הכותרות שבקובץ ולא רק לגליון הראשון
+      const seenHeaders = new Set();
+      const headers = [];
+      sheetsData.forEach(({ json: sheetJson, trueOrder }) => {
+        const sheetHeaders = Object.keys(sheetJson[0]).sort(
+          (a, b) => trueOrder.indexOf(a) - trueOrder.indexOf(b)
+        );
+        sheetHeaders.forEach((header) => {
+          if (!seenHeaders.has(header)) {
+            seenHeaders.add(header);
+            headers.push(header);
+          }
+        });
+      });
+
       const { matched, unmatched } = matchExcelHeaders(headers, columns);
 
       // עמודות שלא זוהו לפי הכותרת - ננסה לזהות לפי הערכים שבתוכן (למשל סיומות/קידומות)
@@ -66,7 +96,7 @@ export default function ExcelImport({ onImport, onOpenPrint }) {
         return;
       }
 
-      onImport(remapRows(json, matched));
+      onImport(applyDefaultCountry(remapRows(json, matched)));
     } catch (err) {
       console.error('לא ניתן היה לטעון את הגדרות השדות מהשרת:', err);
       setMatchError('לא ניתן היה להתאים עמודות אוטומטית (השרת לא זמין) - הקובץ יובא כמו שהוא.');
@@ -101,13 +131,13 @@ export default function ExcelImport({ onImport, onOpenPrint }) {
       invalidateExcelColumnsCache();
     }
 
-    onImport(remapRows(json, finalMatched));
+    onImport(applyDefaultCountry(remapRows(json, finalMatched)));
   };
 
   const handleDialogCancel = () => {
     const { json, matched } = pending;
     setPending(null);
-    onImport(remapRows(json, matched));
+    onImport(applyDefaultCountry(remapRows(json, matched)));
   };
 
   return (

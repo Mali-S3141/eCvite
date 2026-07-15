@@ -27,6 +27,33 @@ const SYSTEM_FIELDS_HIDDEN_BY_DEFAULT = {
 // עמודות כתובת - מהן אפשר להעביר ערך שלא מתאים לעמודת "הערת כתובת" (קליק ימני על התא)
 const ADDRESS_FIELDS = ['country', 'city', 'neighborhood', 'street', 'houseNo'];
 
+// המיון המובנה של הטבלה (Intl.Collator() בלי locale) לא ממיין נכון לפי א'-ב' עברי -
+// collator עם locale 'he' ממיין נכון, וגם numeric:true נותן סדר טבעי למספרים (כמו במספר בית)
+const hebrewCollator = new Intl.Collator('he', { numeric: true, sensitivity: 'base' });
+
+// כשעמודה שממיינים בה שווה בין שתי שורות (לדוגמה שתי שורות עם אותו שם פרטי) - "תת המיון"
+// שובר את השוויון לפי שרשרת עמודות נוספות שהמשתמשת בוחרת בעצמה (אפשר כמה, לפי סדר עדיפות),
+// כל אחת לפי א'-ב'. ה-DataGrid בגרסה הזו (Community) תומך רק בעמודת מיון אחת בו-זמנית,
+// אז זו הדרך היחידה לקבל בפועל "מיון בתוך מיון" בלי לשדרג לגרסת Pro בתשלום
+function createTextSortComparator(field, secondaryFields) {
+  return (value1, value2, param1, param2) => {
+    const primary = hebrewCollator.compare(String(value1 ?? ''), String(value2 ?? ''));
+    if (primary !== 0) return primary;
+
+    const row1 = param1.api.getRow(param1.id);
+    const row2 = param2.api.getRow(param2.id);
+    for (const secondaryField of secondaryFields) {
+      if (secondaryField === field) continue;
+      const secondary = hebrewCollator.compare(
+        String(row1?.[secondaryField] ?? ''),
+        String(row2?.[secondaryField] ?? '')
+      );
+      if (secondary !== 0) return secondary;
+    }
+    return 0;
+  };
+}
+
 export default function DataTable({ records, loading, onSave, onAutoSave, onSelectionChange, onDeleteRows, initialSelectedIds }) {
   const [rows, setRows] = useState(records);
   const [selectionModel, setSelectionModel] = useState(initialSelectedIds || []);
@@ -36,6 +63,7 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
   const [fieldDefs, setFieldDefs] = useState([]);
   const [problemQueue, setProblemQueue] = useState([]); // תורי תאים שצריך לתקן לפני שמירה - {id, field}
   const [contextMenu, setContextMenu] = useState(null); // { mouseX, mouseY, id, field } - קליק ימני על תא כתובת
+  const [secondarySortFields, setSecondarySortFields] = useState([]); // תת-מיון: שרשרת עמודות לשבירת שוויון, לפי בחירת המשתמשת
   const appliedInitialSelection = useRef(false);
   const apiRef = useGridApiRef();
   // ה-columns מחושבות רק פעם אחת (memo תלוי ב-fieldDefs) והפעולות שבתוכן (renderCell)
@@ -118,7 +146,7 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
       motherName: '',
       phone: '',
       mail: '',
-      country: '',
+      country: 'ישראל',
       city: '',
       neighborhood: '',
       street: '',
@@ -245,7 +273,8 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
   const handleFullReset = () => {
     setActiveFilters([]);
     setInputValue('');
-    setSortModel([]); 
+    setSortModel([]);
+    setSecondarySortFields([]);
   };
 
   // לוגיקת תת-הסינון והפילטור המשולב
@@ -315,14 +344,18 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
   };
 
   const columns = useMemo(() => {
-    const dynamicColumns = orderedFieldDefs.map((f) => ({
-      field: f.technicalName,
-      headerName: f.isRequired ? `${f.displayName} *` : f.displayName,
-      width: f.technicalName === 'print' ? 100 : 200,
-      editable: true,
-      type: f.technicalName === 'print' ? 'boolean' : undefined,
-      renderCell: ADDRESS_FIELDS.includes(f.technicalName) ? renderAddressCell : undefined,
-    }));
+    const dynamicColumns = orderedFieldDefs.map((f) => {
+      const isBoolean = f.technicalName === 'print';
+      return {
+        field: f.technicalName,
+        headerName: f.isRequired ? `${f.displayName} *` : f.displayName,
+        width: isBoolean ? 100 : 200,
+        editable: true,
+        type: isBoolean ? 'boolean' : undefined,
+        renderCell: ADDRESS_FIELDS.includes(f.technicalName) ? renderAddressCell : undefined,
+        sortComparator: isBoolean ? undefined : createTextSortComparator(f.technicalName, secondarySortFields),
+      };
+    });
 
     return [
       ...dynamicColumns,
@@ -336,7 +369,23 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
         renderCell: () => <Typography variant="body2">עריכה</Typography>,
       },
     ];
-  }, [orderedFieldDefs, renderAddressCell]);
+  }, [orderedFieldDefs, renderAddressCell, secondarySortFields]);
+
+  const handleAddSecondarySort = (field) => {
+    if (!field || secondarySortFields.includes(field)) return;
+    setSecondarySortFields((prev) => [...prev, field]);
+  };
+
+  const handleRemoveSecondarySort = (field) => {
+    setSecondarySortFields((prev) => prev.filter((f) => f !== field));
+  };
+
+  // ה-DataGrid לא מחשב מחדש את סדר השורות אם רק ה-sortComparator של העמודה השתנה בזמן
+  // שה-sortModel עצמו (עמודת המיון הראשית) נשאר זהה - אז כשתת-המיון משתנה, "דוחפים"
+  // מחדש את אותו sortModel (מערך חדש עם אותו תוכן) כדי לגרום לו לחשב מחדש בפועל
+  useEffect(() => {
+    setSortModel((prev) => (prev.length ? [...prev] : prev));
+  }, [secondarySortFields]);
 
   // שדות עם סדר תצוגה 0 (או ללא סדר) מוסתרים כברירת מחדל, לפי ההגדרה ב-excel_columns
   const [columnVisibilityModel, setColumnVisibilityModel] = useState(SYSTEM_FIELDS_HIDDEN_BY_DEFAULT);
@@ -417,8 +466,46 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
           ))}
         </Stack>
 
+        {/* תת-מיון: כשממיינים לפי עמודה כלשהי (בלחיצה על החץ בכותרת), שורות ששוות בה
+            יישברו לפי שרשרת העמודות הנוספות שנבחרות כאן, לפי סדר ההוספה - אפשר להוסיף
+            כמה שרוצים, ואפשר לשנות את הבחירה גם אחרי שכבר ממויין */}
+        <TextField
+          select
+          label="הוסיפי תת-מיון"
+          size="small"
+          value=""
+          onChange={(e) => handleAddSecondarySort(e.target.value)}
+          sx={{ width: 180, bgcolor: '#ffffff' }}
+        >
+          {orderedFieldDefs
+            .filter((f) => !secondarySortFields.includes(f.technicalName))
+            .map((f) => (
+              <MenuItem key={f.technicalName} value={f.technicalName}>
+                {f.displayName}
+              </MenuItem>
+            ))}
+        </TextField>
+
+        {secondarySortFields.length > 0 && (
+          <Stack direction="row" spacing={1}>
+            {secondarySortFields.map((field, index) => {
+              const def = orderedFieldDefs.find((f) => f.technicalName === field);
+              return (
+                <Chip
+                  key={field}
+                  label={`${index + 1}. ${def ? def.displayName : field}`}
+                  onDelete={() => handleRemoveSecondarySort(field)}
+                  color="secondary"
+                  variant="outlined"
+                  size="small"
+                />
+              );
+            })}
+          </Stack>
+        )}
+
         {/* כפתור איפוס מלא */}
-        {(activeFilters.length > 0 || inputValue.trim() !== '' || sortModel.length > 0) && (
+        {(activeFilters.length > 0 || inputValue.trim() !== '' || sortModel.length > 0 || secondarySortFields.length > 0) && (
           <Button variant="outlined" color="error" size="small" onClick={handleFullReset} sx={{ fontWeight: 'bold' }}>
             בטל סינון/מיון
           </Button>
