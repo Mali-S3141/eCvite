@@ -142,23 +142,20 @@ export default function DashboardPage() {
     }
   }; // <-- זה היה חסר!
 
-  const handleImport = async (rows) => {
+  const handleImport = ({ rows }) => {
+
     if (!user?.phone) return;
 
-    try {
-      const res = await api.importRecords(user.phone, rows);
-      const skipped = res.data?.skipped || 0;
-      setError(
-        skipped > 0
-          ? `הייבוא הושלם: ${skipped} שורות דולגו כי הן זהות לאורחים שכבר קיימים.`
-          : ''
-      );
-      await loadRecords();
-    } catch (err) {
-      console.error('❌ שגיאה בייבוא לשרת:', err);
-      setError('לא ניתן היה לייבא רשומות לשרת. הייבוא לא בוצע.');
-      // לא מציגים כאן את rows הגולמיים בטבלה - הם עלולים להגיע בלי id ולהקריס את הרשת
-    }
+    const rowsWithId = rows.map((row, index) => ({
+      id: index + 1,
+      ...row
+    }));
+
+    console.log("ייבוא לפרונט בלבד:", rowsWithId);
+
+    setRecords(rowsWithId);
+    saveLocalRecords(user.phone, rowsWithId);
+    setIsTableDirty(true);
   };
 
   const handleLogout = () => {
@@ -201,9 +198,5 @@ export default function DashboardPage() {
             onClose={() => setIsPrintModalOpen(false)}
             selectedRows={selectedRows}
         />
-
-        <Box mt={3} display="flex" justifyContent="flex-end" gap={2}>
-          <Button variant="contained">הדפס רשומות</Button>
-        </Box>
       </Container>
   );}
