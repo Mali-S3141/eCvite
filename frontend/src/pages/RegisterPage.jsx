@@ -16,6 +16,8 @@ export default function RegisterPage() {
     const navigate = useNavigate();
     const location = useLocation();
 
+    const [emailError, setEmailError] = useState(false);
+
     const [user, setUser] = useState({
         firstNameMan: location.state?.name || "",
         firstNameWoman: "",
@@ -30,10 +32,17 @@ export default function RegisterPage() {
 
 
     const handleChange = (e) => {
+        const { name, value } = e.target;
+
         setUser({
             ...user,
-            [e.target.name]: e.target.value,
+            [name]: value,
         });
+
+        if (name === "email") {
+            const gmailRegex = /^[a-zA-Z0-9._%+-]+@gmail\.com$/;
+            setEmailError(value !== "" && !gmailRegex.test(value));
+        }
     };
 
 
@@ -43,7 +52,7 @@ export default function RegisterPage() {
         const gmailRegex = /^[a-zA-Z0-9._%+-]+@gmail\.com$/;
 
         if (!gmailRegex.test(user.email)) {
-            alert("יש להזין כתובת Gmail תקינה");
+            setEmailError(true);
             return;
         }
 
@@ -54,6 +63,7 @@ export default function RegisterPage() {
             alert("ההרשמה נכשלה");
         }
     };
+
 
     return (
         <Container maxWidth="sm" sx={{ mt: 4 }}>
@@ -70,10 +80,8 @@ export default function RegisterPage() {
                     gap={2}
                 >
 
-
-
                     <TextField
-                        label="שם פרטי "
+                        label="שם פרטי"
                         name="firstNameWoman"
                         value={user.firstNameWoman}
                         onChange={handleChange}
@@ -98,6 +106,9 @@ export default function RegisterPage() {
                         name="email"
                         value={user.email}
                         onChange={handleChange}
+                        required
+                        error={emailError}
+                        helperText={emailError ? "המייל שהוזן אינו תקין" : ""}
                     />
 
                     <TextField

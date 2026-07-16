@@ -32,7 +32,11 @@ export default function LoginPage() {
 
       navigate('/');
     } catch (err) {
-      setError('אינך רשום במערכת.');
+      if (err.response?.status === 404) {
+        setError('אינך רשום במערכת.');
+      } else {
+        setError('אירעה שגיאה בהתחברות');
+      }
     }
   };
 

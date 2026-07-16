@@ -99,11 +99,17 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
 
   // סדר העמודות ומה מוצג כברירת מחדל נקבעים ב-excel_columns (ב-Neon), לא בקוד -
   // נטען פעם אחת (getExcelColumns ממטמנת) ולא בכל טעינה מחדש
-  useEffect(() => {
-    getExcelColumns()
-      .then(setFieldDefs)
-      .catch(() => setFieldDefs([]));
-  }, []);
+    useEffect(() => {
+        getExcelColumns()
+            .then((data) => {
+                console.log("fieldDefs הגיעו:", data);
+                setFieldDefs(data);
+            })
+            .catch((err) => {
+                console.error("שגיאה בטעינת עמודות:", err);
+                setFieldDefs([]);
+            });
+    }, []);
 
   useEffect(() => {
     setRows(records)
@@ -413,15 +419,19 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
     apiRef.current.scrollToIndexes({ rowIndex, colIndex });
     apiRef.current.setCellFocus(target.id, target.field);
     // עריכה כאן היא ברמת שורה (editMode="row") - פותחים את כל השורה לעריכה
-    // וממקדים בפועל בשדה הבעייתי הספציפי. אם השורה כבר במצב עריכה (למשל יש בה כמה
-    // שדות בעייתיים ברצף) - startRowEditMode היה זורק שגיאה, אז רק ממקדים מחדש
-    const timer = setTimeout(() => {
-      if (apiRef.current.getRowMode(target.id) === 'edit') {
-        apiRef.current.setCellFocus(target.id, target.field);
-      } else {
-        apiRef.current.startRowEditMode({ id: target.id, fieldToFocus: target.field });
-      }
-    }, 50);
+    // וממקדים בפועל בשדה הבעייתי הספציפי
+      const timer = setTimeout(() => {
+          try {
+              const mode = apiRef.current.getRowMode(target.id);
+
+              if (mode === 'view') {apiRef.current.startRowEditMode({
+                  id: target.id
+              });
+              }
+          } catch (err) {
+              console.warn("לא ניתן לפתוח עריכה בשורה:", err);
+          }
+      }, 50);
     return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [problemQueue, filteredRows]);

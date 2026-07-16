@@ -8,14 +8,31 @@ const apiClient = axios.create({
 });
 
 const api = {
-  login: (data) => apiClient.post('/auth/login', data),
-  getRecords: (phone) => apiClient.get('/records', { params: { phone } }),
-  saveRecords: (phone, records) => apiClient.post('/records/save', { phone, records }),
-  deleteRecords: (ids) => apiClient.post('/records/delete', { ids }),
-  importRecords: (phone, records) => apiClient.post('/records/import', { phone, records }),
-  getExcelColumns: () => apiClient.get('/excel-columns'),
-  addExcelColumnAlias: (technicalName, alias) =>
-    apiClient.post(`/excel-columns/${encodeURIComponent(technicalName)}/aliases`, { alias }),
+  login: (data) =>
+      apiClient.post('/auth/login', data),
+  register: (data) =>
+      apiClient.post("/auth/register", data),
+  getRecipients: (phone) =>
+      apiClient.get('/recipients', { params: { phone } }),
+
+    saveRecords: (phone, rows) =>
+        apiClient.post('/recipients/save', {
+            recipients: rows
+        }),
+  deleteRecipients: (ids) =>
+      apiClient.post('/recipients/delete', { ids }),
+
+  importRecipients: (phone, recipients) =>
+      apiClient.post('/recipients/import', { phone, recipients }),
+
+  getRecipientColumns: () =>
+      apiClient.get('/recipient-columns'),
+
+  addRecipientColumnAlias: (technicalName, alias) =>
+      apiClient.post(
+          `/recipient-columns/${encodeURIComponent(technicalName)}/aliases`,
+          { alias }
+      ),
 };
 
 export default api;
