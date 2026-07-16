@@ -1,5 +1,6 @@
 package com.example.excelapp.model;
 
+import com.example.excelapp.entity.User;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import lombok.*;

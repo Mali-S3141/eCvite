@@ -54,13 +54,23 @@ function createTextSortComparator(field, secondaryFields) {
   };
 }
 
-export default function DataTable({ records, loading, onSave, onAutoSave, onSelectionChange, onDeleteRows, initialSelectedIds }) {
+export default function DataTable({
+                                      records,
+                                      loading,
+                                      onSave,
+                                      onAutoSave,
+                                      onSelectionChange,
+                                      onDeleteRows,
+                                      initialSelectedIds,
+                                      importedColumns
+                                  }){
   const [rows, setRows] = useState(records);
   const [selectionModel, setSelectionModel] = useState(initialSelectedIds || []);
   const [sortModel, setSortModel] = useState([]);
   const [activeFilters, setActiveFilters] = useState([]);
   const [inputValue, setInputValue] = useState('');
   const [fieldDefs, setFieldDefs] = useState([]);
+    const [importedFieldDefs, setImportedFieldDefs] = useState([]);
   const [problemQueue, setProblemQueue] = useState([]); // תורי תאים שצריך לתקן לפני שמירה - {id, field}
   const [contextMenu, setContextMenu] = useState(null); // { mouseX, mouseY, id, field } - קליק ימני על תא כתובת
   const [secondarySortFields, setSecondarySortFields] = useState([]); // תת-מיון: שרשרת עמודות לשבירת שוויון, לפי בחירת המשתמשת
@@ -76,6 +86,12 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
 
   // ל-DataGrid (בגרסה הזו) אין prop מובנה של onCellContextMenu - לכן מאזינים ישירות
   // לאירוע contextmenu הטבעי של הדפדפן על הקונטיינר, ומזהים את התא/שורה לפי data-field/data-id
+    useEffect(() => {
+        if (importedColumns && importedColumns.length > 0) {
+            console.log("עמודות שהגיעו מהייבוא:", importedColumns);
+        }
+
+    }, [importedColumns]);
   useEffect(() => {
     const container = gridContainerRef.current;
     if (!container) return undefined;
@@ -327,10 +343,13 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
     return false;
   };
 
-  const orderedFieldDefs = useMemo(
-    () => fieldDefs.slice().sort((a, b) => (a.defaultOrder ?? 999) - (b.defaultOrder ?? 999)),
-    [fieldDefs]
-  );
+    const orderedFieldDefs = useMemo(
+        () =>
+            (importedFieldDefs.length > 0 ? importedFieldDefs : fieldDefs)
+                .slice()
+                .sort((a, b) => (a.defaultOrder ?? 999) - (b.defaultOrder ?? 999)),
+        [fieldDefs, importedFieldDefs]
+    );
   const orderedFieldNames = useMemo(() => orderedFieldDefs.map((f) => f.technicalName), [orderedFieldDefs]);
 
   // סורקת את כל השורות (לפי סדר השורות והעמודות בטבלה) ומחזירה רשימה מסודרת של

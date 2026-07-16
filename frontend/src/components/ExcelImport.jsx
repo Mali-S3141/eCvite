@@ -6,165 +6,322 @@ import { getExcelColumns, invalidateExcelColumnsCache } from '../services/excelC
 import { matchExcelHeaders, matchByValues, remapRows } from '../utils/excelColumnMatcher';
 import ColumnMatchDialog, { IGNORE_VALUE } from './ColumnMatchDialog';
 
-// Object.keys מקדימה כותרות שהן מספרים טהורים (כמו "1") להתחלה, גם אם הן בפועל העמודה
-// האחרונה בקובץ - קוראים את שורת הכותרות כמערך (ששומר על הסדר האמיתי מהקובץ) ובונים
-// לפיו את אותם שמות "__EMPTY"/"__EMPTY_1" ש-sheet_to_json הרגיל היה מייצר, כדי לסדר נכון
 function getTrueHeaderOrder(sheet) {
   const headerRow = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' })[0] || [];
   let emptyCount = 0;
+
   return headerRow.map((cell) => {
     const text = String(cell ?? '').trim();
+
     if (text) return text;
+
     const name = emptyCount === 0 ? '__EMPTY' : `__EMPTY_${emptyCount}`;
     emptyCount += 1;
+
     return name;
   });
 }
 
-// שורה שאין בה כלום בעמודת מדינה - כנראה כי לא כתבו שם משהו במיוחד - מקבלת כברירת מחדל "ישראל"
 function applyDefaultCountry(rows) {
   return rows.map((row) =>
-    String(row.country ?? '').trim() ? row : { ...row, country: 'ישראל' }
+      String(row.country ?? '').trim()
+          ? row
+          : { ...row, country: 'ישראל' }
   );
 }
 
 export default function ExcelImport({ onImport, onOpenPrint }) {
+
   const [fileName, setFileName] = useState('');
   const [matchError, setMatchError] = useState('');
-  const [pending, setPending] = useState(null); // { json, matched, unmatchedHeaders, columns }
+  const [pending, setPending] = useState(null);
+
 
   const handleFile = async (event) => {
+
     const file = event.target.files?.[0];
     if (!file) return;
+
     setFileName(file.name);
     setMatchError('');
+
 
     const data = await file.arrayBuffer();
     const workbook = XLSX.read(data);
 
-    // קוראים את כל הגליונות בקובץ (לא רק את הראשון) - כדי לא לפספס גליון נוסף
-    // (למשל גליון של כתובות בארץ וגליון נפרד של כתובות בחו"ל) - כולם מיובאים לאותה טבלה
+
     const sheetsData = workbook.SheetNames.map((name) => {
+
       const sheet = workbook.Sheets[name];
+
       return {
         json: XLSX.utils.sheet_to_json(sheet, { defval: '' }),
         trueOrder: getTrueHeaderOrder(sheet),
       };
+
     }).filter((s) => s.json.length > 0);
+
 
     const json = sheetsData.flatMap((s) => s.json);
 
+
     if (json.length === 0) {
-      onImport(json);
+
+      onImport({
+        rows: [],
+        columns: []
+      });
+
       return;
     }
 
+
     try {
-      // columns נטען פעם אחת בלבד (getExcelColumns ממטמנת), לא בכל ייבוא
+
       const columns = await getExcelColumns();
 
-      // בונים רשימת כותרות מאוחדת מכל הגליונות יחד (בלי כפילויות, לפי סדר הופעה),
-      // כדי שההתאמה תתייחס לכל הכותרות שבקובץ ולא רק לגליון הראשון
+
       const seenHeaders = new Set();
       const headers = [];
+
+
       sheetsData.forEach(({ json: sheetJson, trueOrder }) => {
+
         const sheetHeaders = Object.keys(sheetJson[0]).sort(
-          (a, b) => trueOrder.indexOf(a) - trueOrder.indexOf(b)
+            (a, b) => trueOrder.indexOf(a) - trueOrder.indexOf(b)
         );
+
+
         sheetHeaders.forEach((header) => {
+
           if (!seenHeaders.has(header)) {
+
             seenHeaders.add(header);
             headers.push(header);
+
           }
+
         });
+
       });
 
-      const { matched, unmatched } = matchExcelHeaders(headers, columns);
 
-      // עמודות שלא זוהו לפי הכותרת - ננסה לזהות לפי הערכים שבתוכן (למשל סיומות/קידומות)
-      const { matched: matchedByValues, unmatched: stillUnmatched } = matchByValues(unmatched, json, columns);
+      const { matched, unmatched } =
+          matchExcelHeaders(headers, columns);
+
+
+      const { matched: matchedByValues, unmatched: stillUnmatched } =
+          matchByValues(unmatched, json, columns);
+
+
       Object.assign(matched, matchedByValues);
 
-      // עמודות שאין בהן שום נתון בקובץ בכלל - אין טעם לשאול עליהן, פשוט מדלגים
+
       const unmatchedWithData = stillUnmatched.filter((header) =>
-        json.some((row) => String(row[header] ?? '').trim() !== '')
+          json.some(
+              (row) => String(row[header] ?? '').trim() !== ''
+          )
       );
 
+
       if (unmatchedWithData.length > 0) {
-        // מציגים למשתמשת מסך התאמה ידנית - הייבוא ימשיך רק אחרי שהיא תבחר/תדלג
-        setPending({ json, matched, unmatchedHeaders: unmatchedWithData, columns });
+
+        setPending({
+          json,
+          matched,
+          unmatchedHeaders: unmatchedWithData,
+          columns
+        });
+
         return;
       }
 
-      onImport(applyDefaultCountry(remapRows(json, matched)));
+      const mappedRows = applyDefaultCountry(
+          remapRows(json, matched)
+      );
+
+      console.log("שורות אחרי מיפוי:", mappedRows);
+      console.log("התאמת עמודות:", matched);
+
+      onImport({
+        rows: mappedRows,
+        columns
+      });
+      onImport({
+        rows: applyDefaultCountry(
+            remapRows(json, matched)
+        ),
+        columns: columns.filter(c => c.technicalName)
+      });
+
+
     } catch (err) {
-      console.error('לא ניתן היה לטעון את הגדרות השדות מהשרת:', err);
-      setMatchError('לא ניתן היה להתאים עמודות אוטומטית (השרת לא זמין) - הקובץ יובא כמו שהוא.');
-      onImport(json);
+
+      console.error(
+          'לא ניתן היה לטעון את הגדרות השדות מהשרת:',
+          err
+      );
+
+
+      setMatchError(
+          'לא ניתן היה להתאים עמודות אוטומטית'
+      );
+
+
+      onImport({
+        rows: applyDefaultCountry(json),
+        columns: await getExcelColumns()
+      });
     }
   };
 
+
+
   const handleDialogConfirm = async (choices) => {
-    const { json, matched, unmatchedHeaders } = pending;
+
+    const {
+      json,
+      matched,
+      unmatchedHeaders,
+      columns
+    } = pending;
+
+
     setPending(null);
+
 
     const finalMatched = { ...matched };
     const aliasesToSave = [];
+
+
     unmatchedHeaders.forEach((header) => {
+
       const technicalName = choices[header];
-      if (technicalName && technicalName !== IGNORE_VALUE) {
+
+
+      if (
+          technicalName &&
+          technicalName !== IGNORE_VALUE
+      ) {
+
         finalMatched[header] = technicalName;
-        aliasesToSave.push({ header, technicalName });
+
+        aliasesToSave.push({
+          header,
+          technicalName
+        });
+
       }
+
     });
 
-    // שומרים את הבחירה כ"כינוי" חדש בטבלה - כדי שבפעם הבאה זה יזוהה אוטומטית
+
+
     if (aliasesToSave.length > 0) {
-      await Promise.all(
-        aliasesToSave.map(({ header, technicalName }) =>
-          api.addExcelColumnAlias(technicalName, header).catch((err) => {
-            console.error('לא ניתן היה לשמור את הכינוי החדש:', err);
-          })
-        )
+      console.log(
+          "כינויים חדשים שנבחרו:",
+          aliasesToSave
       );
-      // מבטלים את המטמון כדי שהייבוא הבא (גם באותה טעינת דף) יכיר את הכינוי החדש מיד
+
       invalidateExcelColumnsCache();
     }
 
-    onImport(applyDefaultCountry(remapRows(json, finalMatched)));
+
+    onImport({
+      rows: applyDefaultCountry(
+          remapRows(json, finalMatched)
+      ),
+      columns
+    });
+
   };
+
+
 
   const handleDialogCancel = () => {
-    const { json, matched } = pending;
+
+    const {
+      json,
+      matched,
+      columns
+    } = pending;
+
+
     setPending(null);
-    onImport(applyDefaultCountry(remapRows(json, matched)));
+
+
+    onImport({
+      rows: applyDefaultCountry(
+          remapRows(json, matched)
+      ),
+      columns
+    });
+
   };
 
+
+
   return (
-    <Box display="flex" alignItems="center" gap={2}>
-      <Button variant="contained" component="label">
-        ייבוא Excel
-        <input hidden type="file" accept=".xlsx,.xls" onChange={handleFile} />
-      </Button>
-       <Button variant="outlined" onClick={onOpenPrint}>
-        הדפסה
-       </Button>
-      {fileName && <Typography>{fileName}</Typography>}
-      {matchError && (
-        <Typography color="error" variant="body2">
-          {matchError}
-        </Typography>
-      )}
-      {pending && (
-        <ColumnMatchDialog
-          open
-          unmatchedHeaders={pending.unmatchedHeaders}
-          columns={pending.columns}
-          rows={pending.json}
-          onConfirm={handleDialogConfirm}
-          onCancel={handleDialogCancel}
-        />
-      )}
-    </Box>
+
+      <Box display="flex" alignItems="center" gap={2}>
+
+        <Button variant="contained" component="label">
+
+          ייבוא Excel
+
+          <input
+              hidden
+              type="file"
+              accept=".xlsx,.xls"
+              onChange={handleFile}
+          />
+
+        </Button>
+
+
+        <Button
+            variant="outlined"
+            onClick={onOpenPrint}
+        >
+          הדפסה
+        </Button>
+
+
+        {fileName &&
+            <Typography>
+              {fileName}
+            </Typography>
+        }
+
+
+        {matchError &&
+            <Typography color="error">
+              {matchError}
+            </Typography>
+        }
+
+
+        {pending && (
+
+            <ColumnMatchDialog
+
+                open
+
+                unmatchedHeaders={pending.unmatchedHeaders}
+
+                columns={pending.columns}
+
+                rows={pending.json}
+
+                onConfirm={handleDialogConfirm}
+
+                onCancel={handleDialogCancel}
+
+            />
+
+        )}
+
+      </Box>
+
   );
 }

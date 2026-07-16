@@ -2,8 +2,10 @@ package com.example.excelapp.service;
 
 
 
-import com.example.excelapp.entity.recipients;
+import com.example.excelapp.entity.Recipients;
 import com.example.excelapp.repository.RecipientsRepository;
+import com.example.excelapp.repository.UserRecipientsRepository;
+import com.example.excelapp.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
@@ -14,16 +16,18 @@ import java.util.List;
 public class RecipientsService {
 
     private final RecipientsRepository recipientsRepository;
+    private final UserRecipientsRepository userRecipientsRepository;
+    private final UserRepository userRepository;
 
 
     public boolean updateAllHashCodes() {
 
         try {
             // שליפת כל הטבלה מה-DB
-            List<recipients> recipientsList = recipientsRepository.findAll();
+            List<Recipients> recipientsList = recipientsRepository.findAll();
 
             // מעבר על כל שורה
-            for (recipients recipient : recipientsList) {
+            for (Recipients recipient : recipientsList) {
 
                 // יצירת hash לפי הנתונים בשורה
                 String newHash = recipient.generateRowHashCode();
@@ -42,5 +46,6 @@ public class RecipientsService {
             return false;
         }
     }
+
 }
 
