@@ -28,7 +28,7 @@ function applyDefaultCountry(rows) {
   );
 }
 
-export default function ExcelImport({ onImport, onOpenPrint }) {
+export default function ExcelImport({ onImport }) {
   const [fileName, setFileName] = useState('');
   const [matchError, setMatchError] = useState('');
   const [pending, setPending] = useState(null); // { json, matched, unmatchedHeaders, columns }
@@ -141,17 +141,32 @@ export default function ExcelImport({ onImport, onOpenPrint }) {
   };
 
   return (
-    <Box display="flex" alignItems="center" gap={2}>
-      <Button variant="contained" component="label">
+    <Box display="flex" alignItems="center" gap={1}>
+      <Button
+        variant="outlined"
+        component="label"
+        size="small"
+        sx={{
+          borderRadius: 2,
+          textTransform: 'none',
+          fontWeight: 600,
+          whiteSpace: 'nowrap',
+          bgcolor: '#ffffff',
+          color: '#1e293b',
+          borderColor: '#e2e8f0',
+          '&:hover': { bgcolor: '#f8fafc', borderColor: '#cbd5e1' },
+        }}
+      >
         ייבוא Excel
         <input hidden type="file" accept=".xlsx,.xls" onChange={handleFile} />
       </Button>
-       <Button variant="outlined" onClick={onOpenPrint}>
-        הדפסה
-       </Button>
-      {fileName && <Typography>{fileName}</Typography>}
+      {fileName && (
+        <Typography variant="caption" sx={{ maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {fileName}
+        </Typography>
+      )}
       {matchError && (
-        <Typography color="error" variant="body2">
+        <Typography color="error" variant="caption">
           {matchError}
         </Typography>
       )}

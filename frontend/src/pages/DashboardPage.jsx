@@ -1,7 +1,6 @@
 import { useEffect,useCallback, useState } from 'react';
-import { Box, Button, Container, Paper, Typography } from '@mui/material';
+import { Box, Button, Typography } from '@mui/material';
 import DataTable from '../components/DataTable';
-import ExcelImport from '../components/ExcelImport';
 import api from '../services/api';
 import PrintModal from '../components/PrintModal'; // ייבוא המודאל החדש
 
@@ -167,10 +166,14 @@ export default function DashboardPage() {
   };
 
   return (
-      <Container maxWidth="xl" sx={{ mt: 2, mb: 2 }}>
-        <Box display="flex" justifyContent="space-between" alignItems="center" mb={1.5}>
-          <Typography variant="h5">לוח רשומות</Typography>
-          <Button variant="outlined" size="small" onClick={handleLogout}>
+      <Box sx={{ width: '100%', px: 2, pt: 0.5, pb: 6 }}>
+        <Box display="flex" justifyContent="flex-end" mb={0.25}>
+          <Button
+            variant="outlined"
+            size="small"
+            onClick={handleLogout}
+            sx={{ textTransform: 'none', px: 2, borderRadius: 2 }}
+          >
             יציאה
           </Button>
         </Box>
@@ -181,10 +184,6 @@ export default function DashboardPage() {
             </Typography>
         )}
 
-        <Paper sx={{ p: 1, mb: 1.5 }}>
-          <ExcelImport onImport={handleImport} onOpenPrint={() => setIsPrintModalOpen(true)} />
-        </Paper>
-
         <DataTable
             records={records}
             loading={loading}
@@ -193,6 +192,8 @@ export default function DashboardPage() {
             onSelectionChange={setSelectedRows}
             onDeleteRows={handleDeleteRows}
             initialSelectedIds={initialSelectedIds}
+            onImport={handleImport}
+            onOpenPrint={() => setIsPrintModalOpen(true)}
         />
 
         {/* רנדור המודאל והעברת הרשומות המסומנות אליו */}
@@ -201,5 +202,5 @@ export default function DashboardPage() {
             onClose={() => setIsPrintModalOpen(false)}
             selectedRows={selectedRows}
         />
-      </Container>
+      </Box>
   );}
