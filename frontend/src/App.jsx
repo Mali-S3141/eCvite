@@ -17,7 +17,10 @@ function App() {
         element={loggedIn ? <DashboardPage /> : <Navigate to="/login" replace />}
       />
       {/* הוספת הנתיב החדש */}
-      <Route path="/print-preview" element={<PrintPreviewPage />} />
+        <Route
+            path="/print-preview"
+            element={loggedIn ? <PrintPreviewPage /> : <Navigate to="/login" replace />}
+        />
       <Route path="*" element={<Navigate to={loggedIn ? '/' : '/login'} replace />} />
     </Routes>
   );
