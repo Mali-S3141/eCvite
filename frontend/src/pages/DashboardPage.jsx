@@ -201,9 +201,5 @@ export default function DashboardPage() {
             onClose={() => setIsPrintModalOpen(false)}
             selectedRows={selectedRows}
         />
-
-        <Box mt={3} display="flex" justifyContent="flex-end" gap={2}>
-          <Button variant="contained">הדפס רשומות</Button>
-        </Box>
       </Container>
   );}
