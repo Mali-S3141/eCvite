@@ -10,3 +10,5 @@ services:
         sync: false
       - key: NEON_DB_PASS
         sync: false
+      - key: CORS_ALLOWED_ORIGINS
+        sync: false

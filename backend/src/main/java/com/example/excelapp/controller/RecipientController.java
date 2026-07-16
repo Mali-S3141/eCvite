@@ -9,7 +9,6 @@ import org.springframework.web.bind.annotation.*;
 
 @RestController
 @RequestMapping("/api/recipients")
-@CrossOrigin(origins = "*")
 public class RecipientController {
 
     private final RecipientsRepository recipientRepository;

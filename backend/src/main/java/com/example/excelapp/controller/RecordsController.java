@@ -13,7 +13,6 @@ import java.util.Map;
 
 @RestController
 @RequestMapping("/api/records")
-@CrossOrigin(origins = "http://localhost:3000")
 public class RecordsController {
     private final RecordService recordService;
     private final UserRepository userRepository;
