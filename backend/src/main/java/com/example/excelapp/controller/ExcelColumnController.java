@@ -9,7 +9,6 @@ import java.util.List;
 
 @RestController
 @RequestMapping("/api/recipient-columns")
-@CrossOrigin(origins = "http://localhost:3000")
 public class ExcelColumnController {
 
     private final ExcelColumnRepository excelColumnRepository;
