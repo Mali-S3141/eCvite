@@ -1,7 +1,7 @@
 package com.example.excelapp.service;
 
-import com.example.excelapp.entity.User;
 import com.example.excelapp.model.Record;
+import com.example.excelapp.model.User;
 import com.example.excelapp.repository.RecordRepository;
 import jakarta.persistence.EntityManager;
 import org.springframework.stereotype.Service;
