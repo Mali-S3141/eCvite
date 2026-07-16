@@ -1,6 +1,6 @@
 package com.example.excelapp.controller;
 
-package com.example.excelapp.controller;
+
 
 import com.example.excelapp.model.ExcelColumn;
 import com.example.excelapp.repository.ExcelColumnRepository;
@@ -22,6 +22,8 @@ public class ExcelColumnController {
 
     @GetMapping
     public ResponseEntity<List<ExcelColumn>> getColumns() {
-        return ResponseEntity.ok(excelColumnRepository.findAll());
+        return ResponseEntity.ok(
+                excelColumnRepository.findAllByOrderByDefaultOrderAsc()
+        );
     }
 }
