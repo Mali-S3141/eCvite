@@ -1,21 +1,52 @@
 import axios from 'axios';
 
 const apiClient = axios.create({
-  baseURL: 'http://localhost:8080/api',
+  baseURL: process.env.REACT_APP_API_BASE_URL || 'http://localhost:8080/api',
   headers: {
     'Content-Type': 'application/json',
   },
 });
 
 const api = {
-  login: (data) => apiClient.post('/auth/login', data),
-  getRecords: (phone) => apiClient.get('/records', { params: { phone } }),
-  saveRecords: (phone, records) => apiClient.post('/records/save', { phone, records }),
-  deleteRecords: (ids) => apiClient.post('/records/delete', { ids }),
-  importRecords: (phone, records) => apiClient.post('/records/import', { phone, records }),
-  getExcelColumns: () => apiClient.get('/excel-columns'),
-  addExcelColumnAlias: (technicalName, alias) =>
-    apiClient.post(`/excel-columns/${encodeURIComponent(technicalName)}/aliases`, { alias }),
+  login: (data) =>
+      apiClient.post('/auth/login', data),
+  register: (data) =>
+      apiClient.post("/auth/register", data),
+  getRecipients: (phone) =>
+      apiClient.get('/recipients', { params: { phone } }),
+    uploadExcel: (formData, phone) =>
+        apiClient.post(
+            `/recipients/upload-excel?phone=${phone}`,
+            formData,
+            {
+                headers:{
+                    "Content-Type":"multipart/form-data"
+                }
+            }
+        ),
+    saveRecords: (phone, rows) =>
+        apiClient.post('/recipients/save', {
+            phone: phone,
+            recipients: rows
+        }),
+  deleteRecipients: (ids) =>
+      apiClient.post('/recipients/delete', { ids }),
+
+  importRecipients: (phone, recipients) =>
+      apiClient.post('/recipients/import', { phone, recipients }),
+
+  getRecipientColumns: () =>
+      apiClient.get('/recipient-columns'),
+    importRecords: (phone, rows) =>
+        apiClient.post('/recipients/import', {
+            phone,
+            recipients: rows
+        }),
+  addRecipientColumnAlias: (technicalName, alias) =>
+      apiClient.post(
+          `/recipient-columns/${encodeURIComponent(technicalName)}/aliases`,
+          { alias }
+      ),
 };
 
 export default api;

@@ -1,7 +1,11 @@
 // נרמול שמות עמודות + מנגנון מילון התאמות (התאמה מדויקת בלבד בשלב הזה)
 
 function normalize(text) {
-  return String(text ?? '').trim().toLowerCase().replace(/\s+/g, ' ');
+  return String(text ?? '')
+      .trim()
+      .toLowerCase()
+      .replace(/['"׳״.,-]/g, '')
+      .replace(/\s+/g, ' ');
 }
 
 function getAliasList(column) {

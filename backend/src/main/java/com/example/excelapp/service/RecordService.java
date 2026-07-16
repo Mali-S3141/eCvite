@@ -72,7 +72,7 @@ public class RecordService {
         incoming.setUser(user);
 
         if (incoming.getId() == null) {
-            incoming.setCreatedBy(user.getName());
+
             incoming.setChanged(false);
             incoming.setChangeDate(null);
             incoming.setChangeBy(null);
@@ -81,7 +81,7 @@ public class RecordService {
 
         Record existing = recordRepository.findById(incoming.getId()).orElse(null);
         if (existing == null) {
-            incoming.setCreatedBy(user.getName());
+
             incoming.setChanged(false);
             incoming.setChangeDate(null);
             incoming.setChangeBy(null);
@@ -93,7 +93,7 @@ public class RecordService {
         if (hasContentChanged(existing, incoming)) {
             incoming.setChanged(true);
             incoming.setChangeDate(LocalDate.now());
-            incoming.setChangeBy(user.getName());
+
         } else {
             incoming.setChanged(existing.getChanged());
             incoming.setChangeDate(existing.getChangeDate());
@@ -145,7 +145,7 @@ public class RecordService {
                 .suffix(getValue(data, "suffix", "סיומת"))
                 .print(false)
                 .changed(false)
-                .createdBy(user.getName())
+
                 .build())
                 .collect(Collectors.toList());
 

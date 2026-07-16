@@ -1,6 +1,5 @@
 package com.example.excelapp.entity;
 
-import com.example.excelapp.model.User;
 import jakarta.persistence.*;
 import lombok.Data;
 import lombok.NoArgsConstructor;
@@ -22,7 +21,7 @@ import lombok.NoArgsConstructor;
 
 
         @ManyToOne
-        @JoinColumn(name = "recipient_id")
-        private recipients recipient;
+        @JoinColumn(name = "recipient_id", referencedColumnName = "hash_code")
+        private Recipients recipient;
     }
 

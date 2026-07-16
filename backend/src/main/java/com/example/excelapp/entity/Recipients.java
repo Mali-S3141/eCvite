@@ -14,7 +14,7 @@ import java.util.Objects;
 @Table(name = "recipients") // שם הטבלה ב-Neon
 @Data // <--- האנוטציה הזו מייצרת את כל ה-Setters וה-Getters אוטומטית!
 @NoArgsConstructor // מייצר קונסטרקטור ריק שחובה עבור JPA
-public class recipients {
+public class Recipients {
 
     @Id
 
@@ -83,6 +83,10 @@ public class recipients {
         } catch (NoSuchAlgorithmException e) {
             throw new RuntimeException("Error generating hash", e);
         }
+    }
+
+    public void setUser(User user) {
+
     }
 }
 
