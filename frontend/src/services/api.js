@@ -10,6 +10,7 @@ const apiClient = axios.create({
 const api = {
   login: (data) =>
       apiClient.post('/auth/login', data),
+
   register: (data) =>
       apiClient.post("/auth/register", data),
   getRecipients: (phone) =>
@@ -36,6 +37,7 @@ const api = {
       apiClient.post('/recipients/import', { phone, recipients }),
 
   getRecipientColumns: () =>
+
       apiClient.get('/recipient-columns'),
     importRecords: (phone, rows) =>
         apiClient.post('/recipients/import', {
