@@ -3,6 +3,7 @@ import { Box, Button, Paper, Stack, Typography, TextField, Chip, Menu, MenuItem,
 import SwapHorizIcon from '@mui/icons-material/SwapHoriz';
 import ArrowDropDownIcon from '@mui/icons-material/ArrowDropDown';
 import CloseIcon from '@mui/icons-material/Close';
+import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import { DataGrid, useGridApiRef } from '@mui/x-data-grid';
 import { getExcelColumns } from '../services/excelColumnsCache';
 import ExcelImport from './ExcelImport';
@@ -102,6 +103,39 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
     return () => container.removeEventListener('contextmenu', handleNativeContextMenu);
   }, []);
 
+  // כפתור מחיקה צף שנשאר תמיד באותו קצה קבוע של המסך (לא בתוך עמודה של הטבלה עצמה) -
+  // כי ה-DataGrid בגרסה הזו ממקם את התאים שלו בעצמו (position אבסולוטי), וזה מתנגש עם
+  // ניסיון להצמיד עמודה רגילה. במקום זה עוקבים אחרי מיקום השורה שבריחוף ומציירים מעליה.
+  const [hoveredRow, setHoveredRow] = useState(null); // { id, top, height }
+
+  useEffect(() => {
+    const container = gridContainerRef.current;
+    if (!container) return undefined;
+
+    const handleMouseOver = (event) => {
+      // אם העכבר עבר על כפתור המחיקה הצף עצמו - לא מאפסים, אחרת הוא נעלם ברגע שמנסים ללחוץ עליו
+      if (event.target.closest('[data-row-delete-icon]')) return;
+      const rowEl = event.target.closest('.MuiDataGrid-row');
+      if (!rowEl) {
+        setHoveredRow(null);
+        return;
+      }
+      const id = rowEl.getAttribute('data-id');
+      const containerRect = container.getBoundingClientRect();
+      const rowRect = rowEl.getBoundingClientRect();
+      setHoveredRow({ id, top: rowRect.top - containerRect.top, height: rowRect.height });
+    };
+
+    const handleMouseLeave = () => setHoveredRow(null);
+
+    container.addEventListener('mouseover', handleMouseOver);
+    container.addEventListener('mouseleave', handleMouseLeave);
+    return () => {
+      container.removeEventListener('mouseover', handleMouseOver);
+      container.removeEventListener('mouseleave', handleMouseLeave);
+    };
+  }, []);
+
   // סדר העמודות ומה מוצג כברירת מחדל נקבעים ב-excel_columns (ב-Neon), לא בקוד -
   // נטען פעם אחת (getExcelColumns ממטמנת) ולא בכל טעינה מחדש
   useEffect(() => {
@@ -110,8 +144,11 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
       .catch(() => setFieldDefs([]));
   }, []);
 
+  // ברשומות שמגיעות מהשרת החדש (Recipients) אין יותר שדה id מספרי - המזהה הייחודי
+  // האמיתי הוא ה-hashCode (מפתח ראשי של הטבלה בפועל) - ה-DataGrid חייב שדה id ייחודי
+  // לכל שורה, אז ממלאים אותו מה-hashCode כשהוא חסר
   useEffect(() => {
-    setRows(records)
+    setRows(records.map((r) => ({ ...r, id: r.id ?? r.hashCode })));
   }, [records]);
 
   // משחזרת פעם אחת בלבד את הבחירה שהייתה קיימת (חוזרים מתצוגה מקדימה), ברגע שהשורות נטענות
@@ -149,7 +186,9 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
   };
 
   const handleAddRow = () => {
-    const nextId = rows.length ? Math.max(...rows.map((row) => row.id || 0)) + 1 : 1;
+    // חלק מה-id-ים הם hashCode (מחרוזת, לא מספר) - מתעלמים מהם בחישוב המספר הבא
+    const numericIds = rows.map((row) => Number(row.id)).filter((n) => Number.isFinite(n));
+    const nextId = numericIds.length ? Math.max(...numericIds) + 1 : 1;
     const newRow = {
       id: nextId,
       prefix: '',
@@ -186,6 +225,17 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
       onDeleteRows(selectionModel);
     }
   };
+
+  // מחיקת שורה בודדת - כפתור הפח שמופיע בריחוף על שורה, בלי צורך לסמן אותה קודם
+  const handleDeleteSingleRow = useCallback((id) => {
+    const updatedRows = rowsRef.current.filter((row) => String(row.id) !== String(id));
+    setRows(updatedRows);
+    setSelectionModel((prev) => prev.filter((selectedId) => String(selectedId) !== String(id)));
+    onAutoSave(updatedRows);
+    if (onDeleteRows) {
+      onDeleteRows([id]);
+    }
+  }, [onAutoSave, onDeleteRows]);
 
  const processRowUpdate = (newRow) => {
     const updatedRows = rows.map((row) => (row.id === newRow.id ? newRow : row));
@@ -434,18 +484,7 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
       };
     });
 
-    return [
-      ...dynamicColumns,
-      ...systemColumns,
-      {
-        field: 'actions',
-        headerName: 'פעולות',
-        width: 120,
-        sortable: false,
-        filterable: false,
-        renderCell: () => <Typography variant="body2">עריכה</Typography>,
-      },
-    ];
+    return [...dynamicColumns, ...systemColumns];
   }, [orderedFieldDefs, renderAddressCell, secondarySortFields, prefixOptions, suffixOptions, renderPickListCell]);
 
   const handleAddSecondarySort = (field) => {
@@ -659,7 +698,7 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
         </Stack>
       </Box>
 
-   <Box ref={gridContainerRef} sx={{ px: 1.5, pb: 1, pt: 0.75, maxWidth: '100%', overflowX: 'auto' }}>
+   <Box ref={gridContainerRef} sx={{ px: 1.5, pb: 1, pt: 0.75, maxWidth: '100%', overflowX: 'auto', position: 'relative' }}>
    <DataGrid
         apiRef={apiRef}
         autoHeight
@@ -815,6 +854,26 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
         sortModel={sortModel}
         onSortModelChange={(model) => setSortModel(model)}
       />
+      {hoveredRow && (
+        <IconButton
+          data-row-delete-icon="true"
+          size="small"
+          title="מחק שורה"
+          onClick={() => handleDeleteSingleRow(hoveredRow.id)}
+          sx={{
+            position: 'absolute',
+            top: hoveredRow.top + hoveredRow.height / 2 - 16,
+            insetInlineEnd: 4,
+            zIndex: 5,
+            bgcolor: 'transparent',
+            boxShadow: 'none',
+            '&:hover': { bgcolor: 'transparent' },
+            '&:hover .row-delete-icon-svg': { color: '#ef4444' },
+          }}
+        >
+          <DeleteOutlineIcon className="row-delete-icon-svg" fontSize="small" sx={{ color: '#94a3b8', transition: 'color 0.15s' }} />
+        </IconButton>
+      )}
    </Box>
 
       <Menu
