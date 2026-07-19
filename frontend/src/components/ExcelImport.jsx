@@ -122,7 +122,7 @@ export default function ExcelImport({ onImport }) {
     if (aliasesToSave.length > 0) {
       await Promise.all(
         aliasesToSave.map(({ header, technicalName }) =>
-          api.addExcelColumnAlias(technicalName, header).catch((err) => {
+          api.addRecipientColumnAlias(technicalName, header).catch((err) => {
             console.error('לא ניתן היה לשמור את הכינוי החדש:', err);
           })
         )
