@@ -1,8 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Box, Button, Paper, Stack, Typography, TextField, Chip, Alert, Menu, MenuItem, IconButton } from '@mui/material';
+import { Box, Button, Paper, Stack, Typography, TextField, Chip, Menu, MenuItem, IconButton } from '@mui/material';
 import SwapHorizIcon from '@mui/icons-material/SwapHoriz';
-import { DataGrid, GridToolbar, useGridApiRef } from '@mui/x-data-grid';
+import ArrowDropDownIcon from '@mui/icons-material/ArrowDropDown';
+import CloseIcon from '@mui/icons-material/Close';
+import { DataGrid, useGridApiRef } from '@mui/x-data-grid';
 import { getExcelColumns } from '../services/excelColumnsCache';
+import ExcelImport from './ExcelImport';
 
 // מספר בית: ספרות, ואפשר אות אחת בסוף (כמו "12" או "12א")
 const HOUSE_NO_PATTERN = /^\d+[a-zA-Zא-ת]?$/;
@@ -54,25 +57,17 @@ function createTextSortComparator(field, secondaryFields) {
   };
 }
 
-export default function DataTable({
-                                      records,
-                                      loading,
-                                      onSave,
-                                      onAutoSave,
-                                      onSelectionChange,
-                                      onDeleteRows,
-                                      initialSelectedIds,
-                                      importedColumns
-                                  }){
+export default function DataTable({ records, loading, onSave, onAutoSave, onSelectionChange, onDeleteRows, initialSelectedIds, onImport, onOpenPrint }) {
   const [rows, setRows] = useState(records);
   const [selectionModel, setSelectionModel] = useState(initialSelectedIds || []);
   const [sortModel, setSortModel] = useState([]);
   const [activeFilters, setActiveFilters] = useState([]);
   const [inputValue, setInputValue] = useState('');
   const [fieldDefs, setFieldDefs] = useState([]);
-    const [importedFieldDefs] = useState([]);
   const [problemQueue, setProblemQueue] = useState([]); // תורי תאים שצריך לתקן לפני שמירה - {id, field}
   const [contextMenu, setContextMenu] = useState(null); // { mouseX, mouseY, id, field } - קליק ימני על תא כתובת
+  const [pickListMenu, setPickListMenu] = useState(null); // { anchorEl, id, field, options } - חץ בחירה מערכים קיימים
+  const [exportMenuAnchor, setExportMenuAnchor] = useState(null); // כפתור "יצוא" - תפריט הדפסת מדבקות / הורדת קובץ
   const [secondarySortFields, setSecondarySortFields] = useState([]); // תת-מיון: שרשרת עמודות לשבירת שוויון, לפי בחירת המשתמשת
   const appliedInitialSelection = useRef(false);
   const apiRef = useGridApiRef();
@@ -86,12 +81,6 @@ export default function DataTable({
 
   // ל-DataGrid (בגרסה הזו) אין prop מובנה של onCellContextMenu - לכן מאזינים ישירות
   // לאירוע contextmenu הטבעי של הדפדפן על הקונטיינר, ומזהים את התא/שורה לפי data-field/data-id
-    useEffect(() => {
-        if (importedColumns && importedColumns.length > 0) {
-            console.log("עמודות שהגיעו מהייבוא:", importedColumns);
-        }
-
-    }, [importedColumns]);
   useEffect(() => {
     const container = gridContainerRef.current;
     if (!container) return undefined;
@@ -115,17 +104,11 @@ export default function DataTable({
 
   // סדר העמודות ומה מוצג כברירת מחדל נקבעים ב-excel_columns (ב-Neon), לא בקוד -
   // נטען פעם אחת (getExcelColumns ממטמנת) ולא בכל טעינה מחדש
-    useEffect(() => {
-        getExcelColumns()
-            .then((data) => {
-                console.log("fieldDefs הגיעו:", data);
-                setFieldDefs(data);
-            })
-            .catch((err) => {
-                console.error("שגיאה בטעינת עמודות:", err);
-                setFieldDefs([]);
-            });
-    }, []);
+  useEffect(() => {
+    getExcelColumns()
+      .then(setFieldDefs)
+      .catch(() => setFieldDefs([]));
+  }, []);
 
   useEffect(() => {
     setRows(records)
@@ -153,6 +136,16 @@ export default function DataTable({
       return;
     }
     onSave(rows);
+  };
+
+  const handlePrintLabels = () => {
+    setExportMenuAnchor(null);
+    if (onOpenPrint) onOpenPrint();
+  };
+
+  const handleDownloadExcel = () => {
+    setExportMenuAnchor(null);
+    apiRef.current.exportDataAsCsv({ utf8WithBom: true });
   };
 
   const handleAddRow = () => {
@@ -272,6 +265,57 @@ export default function DataTable({
     );
   }, [moveValueToAddressNote]);
 
+  // עמודות שבהן יש חץ קטן שמציג את כל הערכים שכבר קיימים באותה עמודה בטבלה עצמה
+  // (בדפדפן - לא שאילתה ל-DB), כמו "הרב", "הרה"ג" בקידומת - בחירה מהתפריט קובעת
+  // את הערך מיד, בלי לגעת בעריכה הרגילה של התא (עדיין לחיצה כפולה כמו כל עמודה אחרת)
+  const prefixOptions = useMemo(
+    () => Array.from(new Set(rows.map((row) => row.prefix).filter((v) => v && String(v).trim()))),
+    [rows]
+  );
+  const suffixOptions = useMemo(
+    () => Array.from(new Set(rows.map((row) => row.suffix).filter((v) => v && String(v).trim()))),
+    [rows]
+  );
+
+  const applyPickListValue = useCallback((id, field, value) => {
+    const updatedRows = rowsRef.current.map((row) =>
+      String(row.id) === String(id) ? { ...row, [field]: value } : row
+    );
+    setRows(updatedRows);
+    onAutoSave(updatedRows);
+  }, [onAutoSave]);
+
+  const renderPickListCell = useCallback((options) => {
+    const PickListCell = (params) => {
+      const value = params.value ? String(params.value) : '';
+      return (
+        <Box
+          sx={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            width: '100%',
+            overflow: 'hidden',
+          }}
+        >
+          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{value}</span>
+          <IconButton
+            size="small"
+            title="בחר מהערכים הקיימים בעמודה"
+            sx={{ p: 0.25, flexShrink: 0 }}
+            onClick={(event) => {
+              event.stopPropagation();
+              setPickListMenu({ anchorEl: event.currentTarget, id: params.id, field: params.field, options });
+            }}
+          >
+            <ArrowDropDownIcon fontSize="small" />
+          </IconButton>
+        </Box>
+      );
+    };
+    return PickListCell;
+  }, []);
+
     const handleInputChange = (e) => {
     setInputValue(e.target.value);
   };
@@ -299,6 +343,14 @@ export default function DataTable({
     setSecondarySortFields([]);
   };
 
+  // שדות "פרטי אורח" בלבד (לא שדות מערכת/ביקורת כמו נוצר ע"י/שונה ע"י/מפתח) -
+  // אלה השדות שהחיפוש המהיר אמור לבדוק, אחרת "מנחם" למשל היה תופס גם שורות
+  // שרק "נוצר ע"י" מנחם, בלי שום קשר לתוכן האמיתי של השורה
+  const searchableFieldNames = useMemo(
+    () => fieldDefs.map((f) => f.technicalName),
+    [fieldDefs]
+  );
+
   // לוגיקת תת-הסינון והפילטור המשולב
   const filteredRows = useMemo(() => {
     const currentWord = inputValue.trim().toLowerCase();
@@ -308,26 +360,14 @@ export default function DataTable({
     if (allWords.length === 0) return rows;
 
     return rows.filter((row) => {
-      return allWords.every((word) => {
-        return (
-          row.man?.toLowerCase().includes(word) ||
-          row.woman?.toLowerCase().includes(word) ||
-          row.lastName?.toLowerCase().includes(word) ||
-          row.fatherName?.toLowerCase().includes(word) ||
-          row.motherName?.toLowerCase().includes(word) ||
-          row.phone?.toLowerCase().includes(word) ||
-          row.mail?.toLowerCase().includes(word) ||
-          row.country?.toLowerCase().includes(word) ||
-          row.city?.toLowerCase().includes(word) ||
-          row.neighborhood?.toLowerCase().includes(word) ||
-          row.street?.toLowerCase().includes(word) ||
-          row.houseNo?.toLowerCase().includes(word) ||
-          row.addressNote?.toLowerCase().includes(word) ||
-          row.belongsTo?.toLowerCase().includes(word)
-        );
-      });
+      return allWords.every((word) =>
+        searchableFieldNames.some((field) => {
+          const value = row[field];
+          return value !== null && value !== undefined && String(value).toLowerCase().includes(word);
+        })
+      );
     });
-  }, [rows, activeFilters, inputValue]);
+  }, [rows, activeFilters, inputValue, searchableFieldNames]);
  const requiredFields = useMemo(
     () => new Set(fieldDefs.filter((f) => f.isRequired).map((f) => f.technicalName)),
     [fieldDefs]
@@ -343,13 +383,10 @@ export default function DataTable({
     return false;
   };
 
-    const orderedFieldDefs = useMemo(
-        () =>
-            (importedFieldDefs.length > 0 ? importedFieldDefs : fieldDefs)
-                .slice()
-                .sort((a, b) => (a.defaultOrder ?? 999) - (b.defaultOrder ?? 999)),
-        [fieldDefs, importedFieldDefs]
-    );
+  const orderedFieldDefs = useMemo(
+    () => fieldDefs.slice().sort((a, b) => (a.defaultOrder ?? 999) - (b.defaultOrder ?? 999)),
+    [fieldDefs]
+  );
   const orderedFieldNames = useMemo(() => orderedFieldDefs.map((f) => f.technicalName), [orderedFieldDefs]);
 
   // סורקת את כל השורות (לפי סדר השורות והעמודות בטבלה) ומחזירה רשימה מסודרת של
@@ -368,16 +405,31 @@ export default function DataTable({
     return problems;
   };
 
+  // סיכום קבוע לתחתית המסך - כמה שורות בסה"כ וכמה מהן דורשות תיקון כרגע,
+  // לא רק בזמן תהליך הקפיצה האוטומטית אחרי לחיצה על "שמור"
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const allProblems = useMemo(() => findProblemCells(rows), [rows, requiredFields, orderedFieldNames]);
+  const problemRowCount = useMemo(
+    () => new Set(allProblems.map((p) => p.id)).size,
+    [allProblems]
+  );
+
   const columns = useMemo(() => {
     const dynamicColumns = orderedFieldDefs.map((f) => {
       const isBoolean = f.technicalName === 'print';
+      const pickListOptions =
+        f.technicalName === 'prefix' ? prefixOptions : f.technicalName === 'suffix' ? suffixOptions : null;
       return {
         field: f.technicalName,
         headerName: f.isRequired ? `${f.displayName} *` : f.displayName,
-        width: isBoolean ? 100 : 200,
+        width: isBoolean ? 90 : 130,
         editable: true,
         type: isBoolean ? 'boolean' : undefined,
-        renderCell: ADDRESS_FIELDS.includes(f.technicalName) ? renderAddressCell : undefined,
+        renderCell: pickListOptions
+          ? renderPickListCell(pickListOptions)
+          : ADDRESS_FIELDS.includes(f.technicalName)
+          ? renderAddressCell
+          : undefined,
         sortComparator: isBoolean ? undefined : createTextSortComparator(f.technicalName, secondarySortFields),
       };
     });
@@ -394,7 +446,7 @@ export default function DataTable({
         renderCell: () => <Typography variant="body2">עריכה</Typography>,
       },
     ];
-  }, [orderedFieldDefs, renderAddressCell, secondarySortFields]);
+  }, [orderedFieldDefs, renderAddressCell, secondarySortFields, prefixOptions, suffixOptions, renderPickListCell]);
 
   const handleAddSecondarySort = (field) => {
     if (!field || secondarySortFields.includes(field)) return;
@@ -438,103 +490,64 @@ export default function DataTable({
     apiRef.current.scrollToIndexes({ rowIndex, colIndex });
     apiRef.current.setCellFocus(target.id, target.field);
     // עריכה כאן היא ברמת שורה (editMode="row") - פותחים את כל השורה לעריכה
-    // וממקדים בפועל בשדה הבעייתי הספציפי
-      const timer = setTimeout(() => {
-          try {
-              const mode = apiRef.current.getRowMode(target.id);
-
-              if (mode === 'view') {apiRef.current.startRowEditMode({
-                  id: target.id
-              });
-              }
-          } catch (err) {
-              console.warn("לא ניתן לפתוח עריכה בשורה:", err);
-          }
-      }, 50);
+    // וממקדים בפועל בשדה הבעייתי הספציפי. אם השורה כבר במצב עריכה (למשל יש בה כמה
+    // שדות בעייתיים ברצף) - startRowEditMode היה זורק שגיאה, אז רק ממקדים מחדש
+    const timer = setTimeout(() => {
+      if (apiRef.current.getRowMode(target.id) === 'edit') {
+        apiRef.current.setCellFocus(target.id, target.field);
+      } else {
+        apiRef.current.startRowEditMode({ id: target.id, fieldToFocus: target.field });
+      }
+    }, 50);
     return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [problemQueue, filteredRows]);
 
   return (
+    <Box sx={{ position: 'relative' }}>
     <Paper
+      elevation={0}
       sx={{
         width: '100%',
-        borderRadius: 3,
+        borderRadius: 0,
         overflow: 'hidden',
-        border: '1px solid #e6e8ec',
-        boxShadow: '0 6px 28px rgba(15, 23, 42, 0.06)',
+        border: 'none',
+        boxShadow: 'none',
       }}
     >
       <Box
         sx={{
-          p: 2.5,
+          px: 1.5,
+          py: 0.5,
           display: 'flex',
           justifyContent: 'space-between',
           alignItems: 'center',
+          flexWrap: 'wrap',
+          gap: 0.75,
           borderBottom: '1px solid #eef0f3',
           background: 'linear-gradient(180deg, #fbfcfe 0%, #ffffff 100%)',
         }}
       >
-        <Typography variant="h6" sx={{ fontWeight: 700, letterSpacing: '-0.01em', color: '#0f172a' }}>
-          טבלת רשומות - עריכה בסגנון Excel
-        </Typography>
-        <Stack direction="row" spacing={1.5}>
-          <Button
-            variant="contained"
-            onClick={handleAddRow}
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+          <Typography variant="subtitle1" sx={{ fontWeight: 700, letterSpacing: '-0.01em', color: '#0f172a', whiteSpace: 'nowrap' }}>
+            ניהול רשימת מוזמנים
+          </Typography>
+
+          <TextField
+            label="הקלידי ערך ולחצי Enter לנעילת סינון/פילטור..."
+            size="small"
+            value={inputValue}
+            onChange={handleInputChange}
+            onKeyDown={handleKeyDown}
             sx={{
-              borderRadius: 2,
-              textTransform: 'none',
-              fontWeight: 600,
-              boxShadow: 'none',
-              bgcolor: '#4f46e5',
-              '&:hover': { bgcolor: '#4338ca', boxShadow: '0 6px 16px rgba(79, 70, 229, 0.28)' },
+              width: 190,
+              bgcolor: '#ffffff',
+              '& .MuiOutlinedInput-root': { borderRadius: 2 },
+              '& .MuiInputLabel-root': { fontSize: '0.72rem' },
             }}
-          >
-            הוסף שורה
-          </Button>
-          <Button
-            variant="outlined"
-            color="error"
-            onClick={handleDeleteRows}
-            disabled={!selectionModel.length}
-            sx={{ borderRadius: 2, textTransform: 'none', fontWeight: 600 }}
-          >
-            מחק שורות
-          </Button>
-          <Button
-            variant="contained"
-            onClick={handleSaveClick}
-            sx={{
-              borderRadius: 2,
-              textTransform: 'none',
-              fontWeight: 600,
-              boxShadow: 'none',
-              bgcolor: '#0f172a',
-              '&:hover': { bgcolor: '#1e293b', boxShadow: '0 6px 16px rgba(15, 23, 42, 0.28)' },
-            }}
-          >
-            שמור שינויים
-          </Button>
-        </Stack>
-      </Box>
+          />
 
-        {/* סרגל סינון ופילטור משולב */}
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, m: 2.5, mb: 3, p: 2, bgcolor: '#f8fafc', borderRadius: 2.5, border: '1px solid #eef0f3' }}>
-        <Typography variant="body2" fontWeight="bold" color="text.secondary">סינון ופילטור מהיר:</Typography>
-
-        <TextField
-          label="הקלידי ערך ולחצי Enter לנעילת סינון/פילטור..."
-          variant="outlined"
-          size="small"
-          value={inputValue}
-          onChange={handleInputChange}
-          onKeyDown={handleKeyDown}
-          sx={{ width: 380, bgcolor: '#ffffff', '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
-        />
-
-        {/* תצוגת התגיות */}
-        <Stack direction="row" spacing={1}>
+          {/* תגיות סינון פעילות + איפוס - ליד תיבת החיפוש עצמה */}
           {activeFilters.map((filter, index) => (
             <Chip
               key={index}
@@ -545,67 +558,108 @@ export default function DataTable({
               size="small"
             />
           ))}
-        </Stack>
 
-        {/* תת-מיון: כשממיינים לפי עמודה כלשהי (בלחיצה על החץ בכותרת), שורות ששוות בה
-            יישברו לפי שרשרת העמודות הנוספות שנבחרות כאן, לפי סדר ההוספה - אפשר להוסיף
-            כמה שרוצים, ואפשר לשנות את הבחירה גם אחרי שכבר ממויין */}
-        <TextField
-          select
-          label="הוסיפי תת-מיון"
-          size="small"
-          value=""
-          onChange={(e) => handleAddSecondarySort(e.target.value)}
-          sx={{ width: 180, bgcolor: '#ffffff', '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
-        >
-          {orderedFieldDefs
-            .filter((f) => !secondarySortFields.includes(f.technicalName))
-            .map((f) => (
-              <MenuItem key={f.technicalName} value={f.technicalName}>
-                {f.displayName}
-              </MenuItem>
-            ))}
-        </TextField>
+          {(activeFilters.length > 0 || inputValue.trim() !== '' || sortModel.length > 0 || secondarySortFields.length > 0) && (
+            <Button
+              variant="outlined"
+              color="error"
+              size="small"
+              onClick={handleFullReset}
+              sx={{ fontWeight: 700, borderRadius: 2, textTransform: 'none', whiteSpace: 'nowrap' }}
+            >
+              בטל סינון/מיון
+            </Button>
+          )}
 
-        {secondarySortFields.length > 0 && (
-          <Stack direction="row" spacing={1}>
-            {secondarySortFields.map((field, index) => {
-              const def = orderedFieldDefs.find((f) => f.technicalName === field);
-              return (
-                <Chip
-                  key={field}
-                  label={`${index + 1}. ${def ? def.displayName : field}`}
-                  onDelete={() => handleRemoveSecondarySort(field)}
-                  color="secondary"
-                  variant="outlined"
-                  size="small"
-                />
-              );
-            })}
-          </Stack>
-        )}
+          {/* תת-מיון: כשממיינים לפי עמודה כלשהי (בלחיצה על החץ בכותרת), שורות ששוות בה
+              יישברו לפי שרשרת העמודות הנוספות שנבחרות כאן, לפי סדר ההוספה - אפשר להוסיף
+              כמה שרוצים, ואפשר לשנות את הבחירה גם אחרי שכבר ממויין */}
+          <TextField
+            select
+            label="תת-מיון"
+            size="small"
+            value=""
+            onChange={(e) => handleAddSecondarySort(e.target.value)}
+            sx={{
+              width: 100,
+              bgcolor: '#ffffff',
+              '& .MuiOutlinedInput-root': { borderRadius: 2 },
+              '& .MuiInputLabel-root': { fontSize: '0.72rem' },
+            }}
+          >
+            {orderedFieldDefs
+              .filter((f) => !secondarySortFields.includes(f.technicalName))
+              .map((f) => (
+                <MenuItem key={f.technicalName} value={f.technicalName}>
+                  {f.displayName}
+                </MenuItem>
+              ))}
+          </TextField>
 
-        {/* כפתור איפוס מלא */}
-        {(activeFilters.length > 0 || inputValue.trim() !== '' || sortModel.length > 0 || secondarySortFields.length > 0) && (
+          {secondarySortFields.map((field, index) => {
+            const def = orderedFieldDefs.find((f) => f.technicalName === field);
+            return (
+              <Chip
+                key={field}
+                label={`${index + 1}. ${def ? def.displayName : field}`}
+                onDelete={() => handleRemoveSecondarySort(field)}
+                color="secondary"
+                variant="outlined"
+                size="small"
+              />
+            );
+          })}
+        </Box>
+
+        <Stack direction="row" spacing={1}>
+          <ExcelImport onImport={onImport} />
+
           <Button
             variant="outlined"
-            color="error"
             size="small"
-            onClick={handleFullReset}
-            sx={{ fontWeight: 700, borderRadius: 2, textTransform: 'none' }}
+            onClick={(event) => setExportMenuAnchor(event.currentTarget)}
+            endIcon={<ArrowDropDownIcon />}
+            sx={{ borderRadius: 2, textTransform: 'none', fontWeight: 600 }}
           >
-            בטל סינון/מיון
+            יצוא
           </Button>
-        )}
+
+          <Button
+            variant="contained"
+            size="small"
+            onClick={handleAddRow}
+            sx={{
+              borderRadius: 2,
+              textTransform: 'none',
+              fontWeight: 600,
+              boxShadow: 'none',
+              bgcolor: '#60a5fa',
+              whiteSpace: 'nowrap',
+              '&:hover': { bgcolor: '#3b82f6', boxShadow: '0 6px 16px rgba(96, 165, 250, 0.35)' },
+            }}
+          >
+            הוסף שורה
+          </Button>
+          <Button
+            variant="contained"
+            size="small"
+            onClick={handleSaveClick}
+            sx={{
+              borderRadius: 2,
+              textTransform: 'none',
+              fontWeight: 600,
+              boxShadow: 'none',
+              bgcolor: '#60a5fa',
+              whiteSpace: 'nowrap',
+              '&:hover': { bgcolor: '#3b82f6', boxShadow: '0 6px 16px rgba(96, 165, 250, 0.35)' },
+            }}
+          >
+            שמור את כל המוזמנים
+          </Button>
+        </Stack>
       </Box>
 
-      {problemQueue.length > 0 && (
-        <Alert severity="warning" sx={{ mx: 2.5, mb: 3, borderRadius: 2 }}>
-          יש {problemQueue.length} שדות חובה ריקים או ערכים לא תקינים שצריך לתקן לפני השמירה - קופצים אוטומטית לשדה הבא שצריך תיקון, עד שהכל יתוקן ואז השמירה תתבצע.
-        </Alert>
-      )}
-
-   <Box ref={gridContainerRef} sx={{ px: 2.5, pb: 2.5 }}>
+   <Box ref={gridContainerRef} sx={{ px: 1.5, pb: 1, pt: 0.75, maxWidth: '100%', overflowX: 'auto' }}>
    <DataGrid
         apiRef={apiRef}
         autoHeight
@@ -614,12 +668,6 @@ export default function DataTable({
         loading={loading}
         checkboxSelection
         disableSelectionOnClick
-        components={{ Toolbar: GridToolbar }}
-        componentsProps={{
-          toolbar: {
-            csvOptions: { utf8WithBom: true },
-          },
-        }}
         getCellClassName={(params) => {
           // התא הספציפי שקפצנו אליו כרגע (הראשון בתור התיקונים) - מודגש הרבה יותר חזק
           // מכל שאר תאי הבעיה, כדי שיהיה ברור בבירור לאיפה קפצו
@@ -638,13 +686,15 @@ export default function DataTable({
           border: 'none',
           borderRadius: 2,
           fontSize: '0.875rem',
+          fontFamily: '"Rubik", "Segoe UI", Arial, sans-serif',
           '& .MuiDataGrid-columnHeaders': {
             backgroundColor: '#f8fafc',
             borderBottom: '2px solid #e2e8f0',
           },
           '& .MuiDataGrid-columnHeaderTitle': {
             fontWeight: 700,
-            color: '#334155',
+            color: '#4b5563',
+            fontFamily: '"Rubik", "Segoe UI", Arial, sans-serif',
             letterSpacing: '0.01em',
           },
           '& .MuiDataGrid-cell': {
@@ -664,22 +714,28 @@ export default function DataTable({
             backgroundColor: '#f8fafc',
           },
           '& .required-empty-cell': {
-            outline: '2px solid #d32f2f',
-            outlineOffset: '-2px',
+            backgroundColor: '#fdecea !important',
+            outline: '1.5px solid #e57373',
+            outlineOffset: '-1.5px',
+            borderRadius: '6px',
           },
           '& .invalid-value-cell': {
-            outline: '2px solid #ed6c02',
-            outlineOffset: '-2px',
+            backgroundColor: '#fef3e2 !important',
+            outline: '1.5px solid #f0a860',
+            outlineOffset: '-1.5px',
+            borderRadius: '6px',
           },
           '& .current-problem-cell': {
-            outline: '3px solid #e11d48',
-            outlineOffset: '-3px',
-            backgroundColor: '#fff1f2 !important',
+            backgroundColor: '#ffe4e8 !important',
+            outline: '2px solid #e11d48',
+            outlineOffset: '-2px',
+            borderRadius: '7px',
+            fontWeight: 700,
             animation: 'current-problem-pulse 1.4s ease-in-out infinite',
           },
           '@keyframes current-problem-pulse': {
-            '0%, 100%': { boxShadow: '0 0 0 4px rgba(225, 29, 72, 0.35)' },
-            '50%': { boxShadow: '0 0 0 9px rgba(225, 29, 72, 0.08)' },
+            '0%, 100%': { boxShadow: '0 0 0 4px rgba(225, 29, 72, 0.30)' },
+            '50%': { boxShadow: '0 0 0 9px rgba(225, 29, 72, 0.06)' },
           },
         }}
         columnVisibilityModel={columnVisibilityModel}
@@ -753,7 +809,6 @@ export default function DataTable({
         rowSelectionModel={selectionModel}
         onRowSelectionModelChange={(newSelectionModel) => {
           setSelectionModel(newSelectionModel);
-          
           const fullSelectedRows = rows.filter((row) => newSelectionModel.includes(row.id));
           onSelectionChange(fullSelectedRows);
         }}
@@ -763,6 +818,15 @@ export default function DataTable({
    </Box>
 
       <Menu
+        open={exportMenuAnchor !== null}
+        anchorEl={exportMenuAnchor}
+        onClose={() => setExportMenuAnchor(null)}
+      >
+        <MenuItem onClick={handlePrintLabels}>הדפסת מדבקות</MenuItem>
+        <MenuItem onClick={handleDownloadExcel}>הורדת קובץ אקסל למחשב</MenuItem>
+      </Menu>
+
+      <Menu
         open={contextMenu !== null}
         onClose={handleCloseContextMenu}
         anchorReference="anchorPosition"
@@ -770,6 +834,104 @@ export default function DataTable({
       >
         <MenuItem onClick={handleMoveToAddressNote}>העבר להערת כתובת</MenuItem>
       </Menu>
+
+      <Menu
+        open={pickListMenu !== null}
+        anchorEl={pickListMenu?.anchorEl}
+        onClose={() => setPickListMenu(null)}
+      >
+        {pickListMenu?.options.length ? (
+          pickListMenu.options.map((option) => (
+            <MenuItem
+              key={option}
+              onClick={() => {
+                applyPickListValue(pickListMenu.id, pickListMenu.field, option);
+                setPickListMenu(null);
+              }}
+            >
+              {option}
+            </MenuItem>
+          ))
+        ) : (
+          <MenuItem disabled>אין עדיין ערכים בעמודה הזו</MenuItem>
+        )}
+      </Menu>
     </Paper>
+
+      {/* שורת בחירה - צפה מעל הכותרת, לא דוחפת את הטבלה למטה כשהיא נפתחת/נסגרת */}
+      {selectionModel.length > 0 && (
+        <Box
+          sx={{
+            position: 'absolute',
+            top: -18,
+            left: '50%',
+            transform: 'translateX(-50%)',
+            zIndex: 10,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 1.5,
+            px: 2,
+            py: 1,
+            bgcolor: '#ffffff',
+            borderRadius: 999,
+            border: '1px solid #e6e8ec',
+            boxShadow: '0 8px 24px rgba(15, 23, 42, 0.12)',
+          }}
+        >
+          <IconButton size="small" onClick={() => { setSelectionModel([]); onSelectionChange([]); }}>
+            <CloseIcon fontSize="small" />
+          </IconButton>
+          <Typography variant="body2" sx={{ fontWeight: 600, color: '#475569', whiteSpace: 'nowrap' }}>
+            {selectionModel.length} נבחרו
+          </Typography>
+          <Button
+            variant="outlined"
+            color="error"
+            size="small"
+            onClick={handleDeleteRows}
+            sx={{ borderRadius: 999, textTransform: 'none', fontWeight: 600, whiteSpace: 'nowrap' }}
+          >
+            מחק שורות
+          </Button>
+        </Box>
+      )}
+
+      {/* סיכום קטן ומוצמד לתחתית המסך - נשאר גלוי כל הזמן, גם כשגוללים בטבלה */}
+      <Box
+        sx={{
+          position: 'fixed',
+          bottom: 0,
+          left: 0,
+          right: 0,
+          zIndex: 20,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'flex-end',
+          flexWrap: 'wrap',
+          gap: 2,
+          px: 2.5,
+          py: 0.75,
+          borderTop: '1px solid #e2e8f0',
+          bgcolor: '#ffffff',
+          fontSize: '0.75rem',
+          boxShadow: '0 -2px 8px rgba(15, 23, 42, 0.05)',
+        }}
+      >
+        {problemQueue.length > 0 && (
+          <Typography component="span" sx={{ fontSize: 'inherit', fontWeight: 600, color: '#b45309' }}>
+            מתקנים כעת - קופצים אוטומטית לשדה הבא עד שהכל יתוקן...
+          </Typography>
+        )}
+        <Typography component="span" sx={{ fontSize: 'inherit', fontWeight: 600, color: '#334155' }}>
+          סה"כ מוזמנים: {rows.length}
+        </Typography>
+        <Typography
+          component="span"
+          sx={{ fontSize: 'inherit', fontWeight: 600, color: problemRowCount > 0 ? '#b45309' : '#15803d' }}
+        >
+          {problemRowCount > 0 ? `דרושים תיקון: ${problemRowCount} שורות` : 'הכל תקין ✓'}
+        </Typography>
+      </Box>
+    </Box>
   );
 }
