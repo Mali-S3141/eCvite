@@ -68,6 +68,17 @@ function applyDefaultCountry(rows) {
   );
 }
 
+// עמודת "הדפסה" (print) חייבת בשרת להיות true/false אמיתי - אבל בקובץ אקסל אנשים כותבים
+// חופשי (כן/לא, Y/N, 1/0) שהשרת לא יודע לפרש כ-boolean וזורק שגיאה - ממירים כאן מראש
+function normalizePrintField(rows) {
+  const truthyValues = new Set(['true', 'כן', 'y', 'yes', '1']);
+  return rows.map((row) => {
+    if (row.print === undefined) return row;
+    const normalized = String(row.print ?? '').trim().toLowerCase();
+    return { ...row, print: truthyValues.has(normalized) };
+  });
+}
+
 export default function ExcelImport({ onImport }) {
   const [fileName, setFileName] = useState('');
   const [matchError, setMatchError] = useState('');
@@ -143,7 +154,7 @@ export default function ExcelImport({ onImport }) {
         return;
       }
 
-      onImport(applyDefaultCountry(remapRows(json, matched)));
+      onImport(normalizePrintField(applyDefaultCountry(remapRows(json, matched))));
     } catch (err) {
       console.error('לא ניתן היה לטעון את הגדרות השדות מהשרת:', err);
       setMatchError('לא ניתן היה להתאים עמודות אוטומטית (השרת לא זמין) - הקובץ יובא כמו שהוא.');
@@ -152,7 +163,7 @@ export default function ExcelImport({ onImport }) {
   };
 
   const handleDialogConfirm = async (choices) => {
-    const { json, matched, unmatchedHeaders } = pending;
+    const { json, matched, unmatchedHeaders, headerLabels } = pending;
     setPending(null);
 
     const finalMatched = { ...matched };
@@ -161,7 +172,12 @@ export default function ExcelImport({ onImport }) {
       const technicalName = choices[header];
       if (technicalName && technicalName !== IGNORE_VALUE) {
         finalMatched[header] = technicalName;
-        aliasesToSave.push({ header, technicalName });
+        // עמודות בלי כותרת אמיתית בקובץ (רק מיקום - "גליון X, עמודה Y") לא נשמרות ככינוי קבוע -
+        // אותו מיקום בקובץ אחר לגמרי לא בהכרח אומר אותו דבר. שומרים כינוי רק לכותרת אמיתית
+        // שהמשתמשת/מי שהכין את הקובץ כתבו בפועל
+        if (!headerLabels?.[header]) {
+          aliasesToSave.push({ header, technicalName });
+        }
       }
     });
 
@@ -178,13 +194,13 @@ export default function ExcelImport({ onImport }) {
       invalidateExcelColumnsCache();
     }
 
-    onImport(applyDefaultCountry(remapRows(json, finalMatched)));
+    onImport(normalizePrintField(applyDefaultCountry(remapRows(json, finalMatched))));
   };
 
   const handleDialogCancel = () => {
     const { json, matched } = pending;
     setPending(null);
-    onImport(applyDefaultCountry(remapRows(json, matched)));
+    onImport(normalizePrintField(applyDefaultCountry(remapRows(json, matched))));
   };
 
   return (
