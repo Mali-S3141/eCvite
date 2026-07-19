@@ -6,18 +6,58 @@ import { getExcelColumns, invalidateExcelColumnsCache } from '../services/excelC
 import { matchExcelHeaders, matchByValues, remapRows } from '../utils/excelColumnMatcher';
 import ColumnMatchDialog, { IGNORE_VALUE } from './ColumnMatchDialog';
 
+// הופכת אינדקס עמודה (0,1,2...) לאות עמודה כמו באקסל (A, B, ... Z, AA, AB...)
+function columnLetterFromIndex(index) {
+  let letter = '';
+  let n = index;
+  do {
+    letter = String.fromCharCode(65 + (n % 26)) + letter;
+    n = Math.floor(n / 26) - 1;
+  } while (n >= 0);
+  return letter;
+}
+
 // Object.keys מקדימה כותרות שהן מספרים טהורים (כמו "1") להתחלה, גם אם הן בפועל העמודה
 // האחרונה בקובץ - קוראים את שורת הכותרות כמערך (ששומר על הסדר האמיתי מהקובץ) ובונים
-// לפיו את אותם שמות "__EMPTY"/"__EMPTY_1" ש-sheet_to_json הרגיל היה מייצר, כדי לסדר נכון
-function getTrueHeaderOrder(sheet) {
+// לפיו את אותם שמות "__EMPTY"/"__EMPTY_1" ש-sheet_to_json הרגיל היה מייצר, כדי לסדר נכון.
+// לעמודות בלי כותרת בכלל, בונים שם פנימי ייחודי-לגליון (לא רק "__EMPTY" הגנרי - אחרת
+// עמודה בלי כותרת בגליון אחד "מתנגשת" עם עמודה בלי כותרת בגליון אחר ונחשבות לאותה עמודה!),
+// ותווית ידידותית (שם הגליון + אות העמודה) להצגה למשתמשת במסך ההתאמה הידנית
+function getHeaderInfo(sheet, sheetName) {
   const headerRow = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' })[0] || [];
   let emptyCount = 0;
-  return headerRow.map((cell) => {
+  const trueOrder = [];
+  const labels = {};
+  const renameMap = {}; // מהשם הגנרי ש-sheet_to_json ייצר בפועל, לשם הייחודי החדש
+  headerRow.forEach((cell, index) => {
     const text = String(cell ?? '').trim();
-    if (text) return text;
-    const name = emptyCount === 0 ? '__EMPTY' : `__EMPTY_${emptyCount}`;
+    if (text) {
+      trueOrder.push(text);
+      return;
+    }
+    const genericKey = emptyCount === 0 ? '__EMPTY' : `__EMPTY_${emptyCount}`;
     emptyCount += 1;
-    return name;
+    const uniqueKey = `__EMPTY__${sheetName}__${index}`;
+    trueOrder.push(uniqueKey);
+    labels[uniqueKey] = `גליון ${sheetName} ${columnLetterFromIndex(index)}`;
+    renameMap[genericKey] = uniqueKey;
+  });
+  return { trueOrder, labels, renameMap };
+}
+
+// מחליפה בכל שורה את השמות הגנריים (__EMPTY וכו') בשמות הייחודיים-לגליון, כדי שנתונים
+// מעמודות בלי כותרת בגליונות שונים לא יתערבבו זה בזה
+function applyRenameMap(rows, renameMap) {
+  if (Object.keys(renameMap).length === 0) return rows;
+  return rows.map((row) => {
+    const renamed = { ...row };
+    Object.entries(renameMap).forEach(([genericKey, uniqueKey]) => {
+      if (genericKey in renamed) {
+        renamed[uniqueKey] = renamed[genericKey];
+        delete renamed[genericKey];
+      }
+    });
+    return renamed;
   });
 }
 
@@ -46,11 +86,18 @@ export default function ExcelImport({ onImport }) {
     // (למשל גליון של כתובות בארץ וגליון נפרד של כתובות בחו"ל) - כולם מיובאים לאותה טבלה
     const sheetsData = workbook.SheetNames.map((name) => {
       const sheet = workbook.Sheets[name];
+      const { trueOrder, labels, renameMap } = getHeaderInfo(sheet, name);
+      const rawJson = XLSX.utils.sheet_to_json(sheet, { defval: '' });
       return {
-        json: XLSX.utils.sheet_to_json(sheet, { defval: '' }),
-        trueOrder: getTrueHeaderOrder(sheet),
+        json: applyRenameMap(rawJson, renameMap),
+        trueOrder,
+        labels,
       };
     }).filter((s) => s.json.length > 0);
+
+    // תוויות ידידותיות (שם גליון + אות עמודה) לעמודות בלי כותרת, ממוזגות מכל הגליונות
+    const headerLabels = {};
+    sheetsData.forEach(({ labels }) => Object.assign(headerLabels, labels));
 
     const json = sheetsData.flatMap((s) => s.json);
 
@@ -92,7 +139,7 @@ export default function ExcelImport({ onImport }) {
 
       if (unmatchedWithData.length > 0) {
         // מציגים למשתמשת מסך התאמה ידנית - הייבוא ימשיך רק אחרי שהיא תבחר/תדלג
-        setPending({ json, matched, unmatchedHeaders: unmatchedWithData, columns });
+        setPending({ json, matched, unmatchedHeaders: unmatchedWithData, columns, headerLabels });
         return;
       }
 
@@ -174,6 +221,7 @@ export default function ExcelImport({ onImport }) {
         <ColumnMatchDialog
           open
           unmatchedHeaders={pending.unmatchedHeaders}
+          headerLabels={pending.headerLabels}
           columns={pending.columns}
           rows={pending.json}
           onConfirm={handleDialogConfirm}

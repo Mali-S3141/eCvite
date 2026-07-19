@@ -31,7 +31,7 @@ function getSampleValues(rows, header, limit = 5) {
 
 // מסך שמופיע כשיש עמודות בקובץ ה-Excel שלא זוהו אוטומטית - המשתמשת בוחרת ידנית
 // לאיזה שדה כל עמודה שייכת (או להתעלם ממנה), והבחירה נשמרת מיד כ"כינוי" חדש לפעם הבאה
-export default function ColumnMatchDialog({ open, unmatchedHeaders, columns, rows, onConfirm, onCancel }) {
+export default function ColumnMatchDialog({ open, unmatchedHeaders, headerLabels = {}, columns, rows, onConfirm, onCancel }) {
   const [choices, setChoices] = useState({});
   const [expandedHeader, setExpandedHeader] = useState(null);
 
@@ -56,7 +56,7 @@ export default function ColumnMatchDialog({ open, unmatchedHeaders, columns, row
           return (
             <Box key={header} mb={2}>
               <Box display="flex" alignItems="center" gap={1}>
-                <Typography sx={{ minWidth: 130 }}>{header}</Typography>
+                <Typography sx={{ minWidth: 130 }}>{headerLabels[header] ?? header}</Typography>
                 <IconButton
                   size="small"
                   title="הצג נתונים מהעמודה"
