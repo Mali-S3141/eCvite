@@ -124,24 +124,46 @@ export default function DashboardPage() {
     try {
       console.log("2. שולח לבקאנד:", updatedRows);
 
-      const cleanRows = updatedRows.map(({ hashCode, ...rest }) => rest);
+      const cleanRows = updatedRows.map(
+          ({ id, hashCode, ...rest }) => rest
+      );
 
       console.log("2. שולח לבקאנד אחרי ניקוי:", cleanRows);
 
-      await api.saveRecords(user.phone, cleanRows);
 
-      console.log("3. נשמר בהצלחה!");
+      console.log("SENDING TO BACKEND:", {
+        phone: user.phone,
+        recipients: cleanRows
+      });
+
+      const response = await api.saveRecords(
+          user.phone,
+          cleanRows
+      );
+
+
+
+      console.log("3. נשמר בהצלחה!", response.data);
+
+
+
 
       setIsTableDirty(false);
+
       await loadRecords();
 
+
     } catch (err) {
+
       console.error("❌ שגיאה בשליחה לבקאנד:", err);
-      setError('לא ניתן לשמור רשומות לשרת. השמירה תבצע באופן מקומי.');
+
+      setError(
+          'לא ניתן לשמור רשומות לשרת. השמירה תבצע באופן מקומי.'
+      );
+
       saveLocalRecords(user.phone, updatedRows);
     }
-  }; // <-- זה היה חסר!
-
+  };
   const handleImport = ({ rows }) => {
 
     if (!user?.phone) return;
