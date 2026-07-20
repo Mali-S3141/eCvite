@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Button, Typography, Box } from '@mui/material';
 import * as XLSX from 'xlsx';
 
+import api from '../services/api';
 import { getExcelColumns, invalidateExcelColumnsCache } from '../services/excelColumnsCache';
 import { matchExcelHeaders, matchByValues, remapRows } from '../utils/excelColumnMatcher';
 import ColumnMatchDialog, { IGNORE_VALUE } from './ColumnMatchDialog';
@@ -83,7 +84,7 @@ export default function ExcelImport({ onImport }) {
   const [fileName, setFileName] = useState('');
   const [matchError, setMatchError] = useState('');
   const [pending, setPending] = useState(null);
-  const [columns, setColumns] = useState([]);
+  const [, setColumns] = useState([]);
 
   const handleFile = async (event) => {
     const file = event.target.files?.[0];
@@ -138,8 +139,6 @@ export default function ExcelImport({ onImport }) {
           }
         });
       });
-
-      const { matched, unmatched } = matchExcelHeaders(headers, columns);
 
       const { matched, unmatched } =
           matchExcelHeaders(headers, loadedColumns);
