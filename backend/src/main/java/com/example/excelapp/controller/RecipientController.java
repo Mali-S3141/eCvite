@@ -1,6 +1,7 @@
 package com.example.excelapp.controller;
 
 import com.example.excelapp.entity.User;
+import com.example.excelapp.entity.UserRecipientId;
 import com.example.excelapp.entity.UserRecipients;
 import com.example.excelapp.entity.Recipients;
 import com.example.excelapp.repository.RecipientsRepository;
@@ -12,6 +13,7 @@ import com.example.excelapp.service.ExcelService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -35,11 +37,16 @@ import java.util.List;
 public class RecipientController {
 
     private final RecipientsRepository recipientRepository;
+    @Autowired
     private final UserRecipientsRepository userRecipientsRepository;
+
+    @Autowired
     private final UserRepository userRepository;
 
     @Autowired
     private ExcelService excelService;
+
+
 
 
     public RecipientController(
@@ -52,22 +59,14 @@ public class RecipientController {
         this.userRepository = userRepository;
     }
 
-
     @PostMapping("/save")
+    @Transactional
     public ResponseEntity<?> saveRecipients(
             @RequestBody SaveRecipientsRequest request
     ) {
 
         User user = userRepository.findByPhone(request.getPhone());
-        System.out.println("SAVE RECIPIENTS START");
 
-        System.out.println(
-                "PHONE: " + request.getPhone()
-        );
-
-        System.out.println(
-                "COUNT: " + request.getRecipients().size()
-        );
         if (user == null) {
             return ResponseEntity
                     .status(HttpStatus.NOT_FOUND)
@@ -78,98 +77,77 @@ public class RecipientController {
         List<Recipients> savedRecipients = new ArrayList<>();
 
 
-        for (Recipients r : request.getRecipients()) {
-
-                System.out.println(
-                        "RECIPIENT: " +
-                                r.getMan() + " " +
-                                r.getLastName() +
-                                " HASH=" + r.getHashCode()
-                );
-
-            // יצירת hash אם חסר
-            if (r.getHashCode() == null || r.getHashCode().isEmpty()) {
-                r.setHashCode(r.generateRowHashCode());
-            }
+        for (Recipients recipient : request.getRecipients()) {
 
 
-            // בדיקה האם הנמען כבר קיים
-            Recipients existing =
-                    recipientRepository.findById(r.getHashCode())
+            // יצירת hash
+            String hash = recipient.generateRowHashCode();
+            recipient.setHashCode(hash);
+
+
+            Recipients savedRecipient =
+                    recipientRepository.findById(hash)
                             .orElse(null);
 
 
-            if (existing != null) {
+            if (savedRecipient == null) {
 
-                // כבר קיים - משתמשים בו
-                savedRecipients.add(existing);
+                savedRecipient =
+                        recipientRepository.saveAndFlush(recipient);
+
+                System.out.println(
+                        "RECIPIENT SAVED: "
+                                + savedRecipient.getHashCode()
+                );
 
             } else {
 
-                // חדש - שומרים
-                Recipients saved =
-                        recipientRepository.save(r);
-
-                savedRecipients.add(saved);
+                System.out.println(
+                        "RECIPIENT EXISTS: "
+                                + savedRecipient.getHashCode()
+                );
             }
+
+
+            // יצירת הקישור
+            UserRecipientId id =
+                    new UserRecipientId(
+                            user.getHashCode(),
+                            savedRecipient.getHashCode()
+                    );
+
+
+            if (!userRecipientsRepository.existsById(id)) {
+
+
+                UserRecipients link =
+                        new UserRecipients();
+
+                link.setId(id);
+                link.setUser(user);
+                link.setRecipient(savedRecipient);
+
+
+                userRecipientsRepository.saveAndFlush(link);
+
+
+                System.out.println(
+                        "LINK CREATED: "
+                                + user.getHashCode()
+                                + " -> "
+                                + savedRecipient.getHashCode()
+                );
+            }
+
+
+            savedRecipients.add(savedRecipient);
         }
 
 
-        // יצירת מצביעים למשתמש
-        List<UserRecipients> links = savedRecipients.stream()
-                .filter(recipient ->
-                        !userRecipientsRepository.existsByUserAndRecipient(user, recipient)
-                )
-                .map(recipient -> {
-
-                    UserRecipients link = new UserRecipients();
-
-                    link.setUser(user);
-                    link.setRecipient(recipient);
-
-                    return link;
-
-                })
-                .toList();
-
-
-        userRecipientsRepository.saveAll(links);
-        return null;
+        return ResponseEntity.ok(savedRecipients);
     }
-
-
-    @GetMapping
-    public ResponseEntity<?> getRecipients() {
-
-        return ResponseEntity.ok(
-                recipientRepository.findAll()
-        );
-    }
-
-
-
-    @PostMapping("/add")
-    public ResponseEntity<Recipients> insertRecipient(
-            @RequestBody Recipients newRecipient
-    ) {
-
-        newRecipient.setHashCode(
-                newRecipient.generateRowHashCode()
-        );
-
-
-        Recipients savedRecipient =
-                recipientRepository.save(newRecipient);
-
-
-        return ResponseEntity
-                .status(HttpStatus.CREATED)
-                .body(savedRecipient);
-    }
-
-
-
     @PostMapping("/import")
+    @Transactional
     public ResponseEntity<?> importRecipients(
             @RequestBody SaveRecipientsRequest request
     ) {
@@ -182,43 +160,38 @@ public class RecipientController {
                     .body("User not found");
         }
 
+        // יצירת hash למשתמש אם עדיין אין
+        if (user.getHashCode() == null || user.getHashCode().isBlank()) {
+            user.setHashCode(user.generateHashCode());
+            userRepository.save(user);
+        }
 
-        for (Recipients recipient : request.getRecipients()) {
+        List<Recipients> savedRecipients = new ArrayList<>();
+        for (Recipients recipient : savedRecipients) {
 
-            // יצירת hash אם אין
-            if (recipient.getHashCode() == null) {
-                recipient.setHashCode(
-                        recipient.generateRowHashCode()
+            UserRecipientId id = new UserRecipientId(
+                    user.getHashCode(),
+                    recipient.getHashCode()
+            );
+
+
+            if (!userRecipientsRepository.existsById(id)) {
+
+                UserRecipients link = new UserRecipients();
+
+                link.setId(id);
+                link.setUser(user);
+                link.setRecipient(recipient);
+
+                userRecipientsRepository.save(link);
+
+                System.out.println(
+                        "LINK CREATED: "
+                                + user.getHashCode()
+                                + " -> "
+                                + recipient.getHashCode()
                 );
             }
         }
 
-
-        List<Recipients> savedRecipients =
-                recipientRepository.saveAll(request.getRecipients());
-
-
-        List<UserRecipients> links =
-                savedRecipients.stream()
-                        .map(recipient -> {
-
-                            UserRecipients link =
-                                    new UserRecipients();
-
-                            link.setUser(user);
-                            link.setRecipient(recipient);
-
-                            return link;
-
-                        })
-                        .toList();
-
-
-        userRecipientsRepository.saveAll(links);
-
-
-        return ResponseEntity.ok(
-                savedRecipients
-        );
-    }
-}
+        return ResponseEntity.ok(savedRecipients);}}
