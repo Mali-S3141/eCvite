@@ -3,7 +3,7 @@ import { Box, Button, Paper, Stack, Typography, TextField, Chip, Alert, Menu, Me
 import SwapHorizIcon from '@mui/icons-material/SwapHoriz';
 import { DataGrid, GridToolbar, useGridApiRef } from '@mui/x-data-grid';
 import { getExcelColumns } from '../services/excelColumnsCache';
-
+import api from "../services/api";
 // מספר בית: ספרות, ואפשר אות אחת בסוף (כמו "12" או "12א")
 const HOUSE_NO_PATTERN = /^\d+[a-zA-Zא-ת]?$/;
 
@@ -343,7 +343,13 @@ export default function DataTable({
     return false;
   };
 
-
+    const orderedFieldDefs = useMemo(
+        () =>
+            fieldDefs
+                .slice()
+                .sort((a, b) => (a.defaultOrder ?? 999) - (b.defaultOrder ?? 999)),
+        [fieldDefs]
+    );
   const orderedFieldNames = useMemo(() => orderedFieldDefs.map((f) => f.technicalName), [orderedFieldDefs]);
 
   // סורקת את כל השורות (לפי סדר השורות והעמודות בטבלה) ומחזירה רשימה מסודרת של

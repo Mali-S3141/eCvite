@@ -35,7 +35,7 @@ export default function ExcelImport({ onImport, onOpenPrint }) {
   const [fileName, setFileName] = useState('');
   const [matchError, setMatchError] = useState('');
   const [pending, setPending] = useState(null);
-
+  const [columns, setColumns] = useState([]);
 
   const handleFile = async (event) => {
 
@@ -78,7 +78,8 @@ export default function ExcelImport({ onImport, onOpenPrint }) {
 
     try {
 
-      const columns = await getExcelColumns();
+      const loadedColumns = await getExcelColumns();
+      setColumns(loadedColumns);
 
 
       const seenHeaders = new Set();
@@ -107,12 +108,10 @@ export default function ExcelImport({ onImport, onOpenPrint }) {
 
 
       const { matched, unmatched } =
-          matchExcelHeaders(headers, columns);
-
+          matchExcelHeaders(headers, loadedColumns);
 
       const { matched: matchedByValues, unmatched: stillUnmatched } =
-          matchByValues(unmatched, json, columns);
-
+          matchByValues(unmatched, json, loadedColumns);
 
       Object.assign(matched, matchedByValues);
 
@@ -130,7 +129,7 @@ export default function ExcelImport({ onImport, onOpenPrint }) {
           json,
           matched,
           unmatchedHeaders: unmatchedWithData,
-          columns
+          columns: loadedColumns
         });
 
         return;
@@ -145,13 +144,11 @@ export default function ExcelImport({ onImport, onOpenPrint }) {
 
       onImport({
         rows: mappedRows,
-        columns
+        columns: loadedColumns
       });
       onImport({
-        rows: applyDefaultCountry(
-            remapRows(json, matched)
-        ),
-        columns: columns.filter(c => c.technicalName)
+        rows: applyDefaultCountry(remapRows(json, matched)),
+        columns: loadedColumns.filter(c => c.technicalName)
       });
 
 
