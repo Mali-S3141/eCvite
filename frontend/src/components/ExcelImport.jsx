@@ -83,7 +83,8 @@ function normalizePrintField(rows) {
 export default function ExcelImport({ onImport }) {
   const [fileName, setFileName] = useState('');
   const [matchError, setMatchError] = useState('');
-  const [pending, setPending] = useState(null); // { json, matched, unmatchedHeaders, columns }
+  const [pending, setPending] = useState(null);
+  const [, setColumns] = useState([]);
 
   const handleFile = async (event) => {
     const file = event.target.files?.[0];
@@ -119,8 +120,9 @@ export default function ExcelImport({ onImport }) {
     }
 
     try {
-      // columns נטען פעם אחת בלבד (getExcelColumns ממטמנת), לא בכל ייבוא
-      const columns = await getExcelColumns();
+
+      const loadedColumns = await getExcelColumns();
+      setColumns(loadedColumns);
 
       // בונים רשימת כותרות מאוחדת מכל הגליונות יחד (בלי כפילויות, לפי סדר הופעה),
       // כדי שההתאמה תתייחס לכל הכותרות שבקובץ ולא רק לגליון הראשון
@@ -138,10 +140,12 @@ export default function ExcelImport({ onImport }) {
         });
       });
 
-      const { matched, unmatched } = matchExcelHeaders(headers, columns);
+      const { matched, unmatched } =
+          matchExcelHeaders(headers, loadedColumns);
 
-      // עמודות שלא זוהו לפי הכותרת - ננסה לזהות לפי הערכים שבתוכן (למשל סיומות/קידומות)
-      const { matched: matchedByValues, unmatched: stillUnmatched } = matchByValues(unmatched, json, columns);
+      const { matched: matchedByValues, unmatched: stillUnmatched } =
+          matchByValues(unmatched, json, loadedColumns);
+
       Object.assign(matched, matchedByValues);
 
       // עמודות שאין בהן שום נתון בקובץ בכלל - אין טעם לשאול עליהן, פשוט מדלגים
@@ -150,12 +154,34 @@ export default function ExcelImport({ onImport }) {
       );
 
       if (unmatchedWithData.length > 0) {
-        // מציגים למשתמשת מסך התאמה ידנית - הייבוא ימשיך רק אחרי שהיא תבחר/תדלג
-        setPending({ json, matched, unmatchedHeaders: unmatchedWithData, columns, headerLabels });
+
+        setPending({
+          json,
+          matched,
+          unmatchedHeaders: unmatchedWithData,
+          columns: loadedColumns
+        });
+
         return;
       }
 
-      onImport(normalizePrintField(applyDefaultCountry(remapRows(json, matched))));
+      const mappedRows = applyDefaultCountry(
+          remapRows(json, matched)
+      );
+
+      console.log("שורות אחרי מיפוי:", mappedRows);
+      console.log("התאמת עמודות:", matched);
+
+      onImport({
+        rows: mappedRows,
+        columns: loadedColumns
+      });
+      onImport({
+        rows: applyDefaultCountry(remapRows(json, matched)),
+        columns: loadedColumns.filter(c => c.technicalName)
+      });
+
+
     } catch (err) {
       console.error('לא ניתן היה לטעון את הגדרות השדות מהשרת:', err);
       setMatchError('לא ניתן היה להתאים עמודות אוטומטית (השרת לא זמין) - הקובץ יובא כמו שהוא.');

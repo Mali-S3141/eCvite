@@ -434,7 +434,6 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
     return false;
   };
 
-
   const orderedFieldDefs = useMemo(
       () =>
           fieldDefs
