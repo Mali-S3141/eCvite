@@ -1,4 +1,5 @@
 // src/pages/PrintPreviewPage.jsx
+import { useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { Box, Container, Typography, Button, Paper, Stack } from '@mui/material';
 import { REAL_LABEL_SIZES, getRealColumns } from '../utils/labelSheetLayout';
@@ -11,8 +12,8 @@ function getDisplayName(row) {
 // פריסת רשת אמיתית לדף מדבקות - הגדלים ומספר העמודות מגיעים מאותו מקור אמת
 // שמשמש גם את התצוגה הממוזערת במודאל, כדי ששניהם תמיד יתאימו
 const LABEL_LAYOUT = {
-  small: { ...REAL_LABEL_SIZES.small, columns: getRealColumns('small'), nameVariant: 'body1', addrVariant: 'caption' },
-  medium: { ...REAL_LABEL_SIZES.medium, columns: getRealColumns('medium'), nameVariant: 'h5', addrVariant: 'h6' },
+  // המדבקה גבוהה רק 2.3 ס"מ בפועל - כתב גדול (h5/h6) לא נכנס בכלל, לכן כתב קטן ודחוס
+  standard: { ...REAL_LABEL_SIZES.standard, columns: getRealColumns('standard'), nameVariant: 'body2', addrVariant: 'caption' },
   large: { ...REAL_LABEL_SIZES.large, columns: getRealColumns('large'), nameVariant: 'h4', addrVariant: 'h5' },
 };
 
@@ -21,16 +22,25 @@ export default function PrintPreviewPage() {
   const navigate = useNavigate();
   
   // חילוץ הנתונים עם תמיכה מלאה גם ב-selectedRows וגם ב-selectedItems של ראש הצוות
-const { selectedRows = [], selectedItems = [], labelSize = 'medium', printer = '', fontType = 'Arial, sans-serif', deliveryMethod = 'courier' } = location.state || {};
+const { selectedRows = [], selectedItems = [], labelSize = 'standard', printer = '', fontType = 'Arial, sans-serif', deliveryMethod = 'courier', autoPrint = false } = location.state || {};
 
   // קביעת הרשומות להצגה לפי מה שהתקבל
   const actualRows = selectedRows.length > 0 ? selectedRows : selectedItems;
   const rowsToDisplay = actualRows;
-  const layout = LABEL_LAYOUT[labelSize] || LABEL_LAYOUT.medium;
+  const layout = LABEL_LAYOUT[labelSize] || LABEL_LAYOUT.standard;
+
+  // כשמגיעים ישר מכפתור "הדפס" (לא מ"תצוגה מקדימה") - פותחים את חלון ההדפסה
+  // של הדפדפן מיד, בלי לחכות שילחצו שוב על "הדפס מדבקות" כאן
+  useEffect(() => {
+    if (autoPrint && rowsToDisplay.length > 0) {
+      window.print();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <Container maxWidth="md" sx={{ mt: 4, mb: 4, '@media print': { m: 0, maxWidth: 'none', p: 0 } }}>
-      <style>{`@media print { @page { margin: 10mm; } }`}</style>
+      <style>{`@media print { @page { margin: 0; } }`}</style>
       <Paper
         sx={{
           p: 4,
@@ -95,7 +105,10 @@ const { selectedRows = [], selectedItems = [], labelSize = 'medium', printer = '
               display: 'grid',
               gridTemplateColumns: `repeat(${layout.columns}, ${layout.width}px)`,
               justifyContent: 'center',
-              gap: 2,
+              // בלי רווח אופקי בין העמודות - 3 מדבקות של 7 ס"מ תופסות בדיוק את כל רוחב הדף,
+              // אין מקום לרווח. רווח אנכי קטן בין השורות עדיין נשאר, לנוחות קריאה
+              columnGap: 0,
+              rowGap: 1,
             }}
           >
             {rowsToDisplay.map((row, index) => (
@@ -110,29 +123,35 @@ const { selectedRows = [], selectedItems = [], labelSize = 'medium', printer = '
                   flexDirection: 'column',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  p: 2,
-                  border: '2px solid #000000',
+                  overflow: 'hidden',
+                  p: 0.5,
                   backgroundColor: '#ffffff',
-                  boxShadow: '0 2px 4px rgba(0,0,0,0.05)',
                   pageBreakInside: 'avoid',
                   fontFamily: fontType,
-                  '@media print': { boxShadow: 'none' },
                 }}
               >
                 {/* שורת השם המכובדת */}
                 <Typography
                   variant={layout.nameVariant}
-                  sx={{ fontWeight: 'bold', mb: 1, color: '#000000', textAlign: 'center', fontFamily: 'inherit' }}
+                  sx={{ fontWeight: 'bold', mb: 0.25, color: '#000000', textAlign: 'center', fontFamily: 'inherit', lineHeight: 1.2 }}
                 >
                   לכבוד {row.prefix || ''} {getDisplayName(row)} {row.suffix || ''}
                 </Typography>
 
-                {/* שורת הכתובת */}
+                {/* שורת הרחוב */}
                 <Typography
                   variant={layout.addrVariant}
-                  sx={{ color: '#333333', textAlign: 'center', fontFamily: 'inherit' }}
+                  sx={{ color: '#333333', textAlign: 'center', fontFamily: 'inherit', lineHeight: 1.2 }}
                 >
-                  {row.street} {row.houseNo}, {row.city} {row.country || ''}
+                  {row.street} {row.houseNo}
+                </Typography>
+
+                {/* שורת עיר וארץ - מתחת לרחוב */}
+                <Typography
+                  variant={layout.addrVariant}
+                  sx={{ color: '#333333', textAlign: 'center', fontFamily: 'inherit', lineHeight: 1.2 }}
+                >
+                  {row.city} {row.country || ''}
                 </Typography>
               </Box>
             ))}
