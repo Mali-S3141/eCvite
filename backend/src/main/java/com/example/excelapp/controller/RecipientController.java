@@ -21,17 +21,6 @@ import java.util.List;
 
 @RestController
 @RequestMapping("/api/recipients")
-@CrossOrigin(
-        origins = "http://localhost:3000",
-        allowedHeaders = "*",
-        methods = {
-                RequestMethod.GET,
-                RequestMethod.POST,
-                RequestMethod.PUT,
-                RequestMethod.DELETE,
-                RequestMethod.OPTIONS
-        }
-)
 public class RecipientController {
 
     private final RecipientsRepository recipientRepository;
@@ -139,11 +128,21 @@ public class RecipientController {
 
 
     @GetMapping
-    public ResponseEntity<?> getRecipients() {
+    public ResponseEntity<?> getRecipients(@RequestParam String phone) {
 
-        return ResponseEntity.ok(
-                recipientRepository.findAll()
-        );
+        User user = userRepository.findByPhone(phone);
+
+        if (user == null) {
+            return ResponseEntity
+                    .status(HttpStatus.NOT_FOUND)
+                    .body("User not found");
+        }
+
+        List<Recipients> recipients = userRecipientsRepository.findByUser(user).stream()
+                .map(UserRecipients::getRecipient)
+                .toList();
+
+        return ResponseEntity.ok(recipients);
     }
 
 

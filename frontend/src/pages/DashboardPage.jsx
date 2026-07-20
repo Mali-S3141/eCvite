@@ -1,7 +1,6 @@
 import { useEffect,useCallback, useState } from 'react';
-import { Box, Button, Container, Paper, Typography } from '@mui/material';
+import { Box, Button, Typography } from '@mui/material';
 import DataTable from '../components/DataTable';
-import ExcelImport from '../components/ExcelImport';
 import api from '../services/api';
 import PrintModal from '../components/PrintModal'; // ייבוא המודאל החדש
 
@@ -49,7 +48,7 @@ export default function DashboardPage() {
 
     try {
       setLoading(true);
-      const response = await api.getRecords(user.phone);
+      const response = await api.getRecipients(user.phone);
 
       //  שיפור: אם הבקאנד החזיר רשימה ריקה (כי ה-DB ריק/לא מחובר), נטען כגיבוי מהלוקאל
       if (response.data && response.data.length > 0) {
@@ -108,7 +107,7 @@ export default function DashboardPage() {
     const realIds = idsToDelete.filter((id) => typeof id === 'number' || /^\d+$/.test(id));
     if (!realIds.length) return;
     try {
-      await api.deleteRecords(realIds);
+      await api.deleteRecipients(realIds);
     } catch (err) {
       console.error('לא ניתן היה למחוק את הרשומות מהשרת:', err);
     }
@@ -164,20 +163,24 @@ export default function DashboardPage() {
       saveLocalRecords(user.phone, updatedRows);
     }
   };
-  const handleImport = ({ rows }) => {
 
+  const handleImport = async (rows) => {
     if (!user?.phone) return;
 
-    const rowsWithId = rows.map((row, index) => ({
-      id: index + 1,
-      ...row
-    }));
-
-    console.log("ייבוא לפרונט בלבד:", rowsWithId);
-
-    setRecords(rowsWithId);
-    saveLocalRecords(user.phone, rowsWithId);
-    setIsTableDirty(true);
+    try {
+      const res = await api.importRecords(user.phone, rows);
+      const skipped = res.data?.skipped || 0;
+      setError(
+        skipped > 0
+          ? `הייבוא הושלם: ${skipped} שורות דולגו כי הן זהות לאורחים שכבר קיימים.`
+          : ''
+      );
+      await loadRecords();
+    } catch (err) {
+      console.error('❌ שגיאה בייבוא לשרת:', err);
+      setError('לא ניתן היה לייבא רשומות לשרת. הייבוא לא בוצע.');
+      // לא מציגים כאן את rows הגולמיים בטבלה - הם עלולים להגיע בלי id ולהקריס את הרשת
+    }
   };
 
   const handleLogout = () => {
@@ -186,10 +189,14 @@ export default function DashboardPage() {
   };
 
   return (
-      <Container maxWidth="xl" sx={{ mt: 2, mb: 2 }}>
-        <Box display="flex" justifyContent="space-between" alignItems="center" mb={1.5}>
-          <Typography variant="h5">לוח רשומות</Typography>
-          <Button variant="outlined" size="small" onClick={handleLogout}>
+      <Box sx={{ width: '100%', px: 2, pt: 0.5, pb: 6 }}>
+        <Box display="flex" justifyContent="flex-end" mb={0.25}>
+          <Button
+            variant="outlined"
+            size="small"
+            onClick={handleLogout}
+            sx={{ textTransform: 'none', px: 2, borderRadius: 2 }}
+          >
             יציאה
           </Button>
         </Box>
@@ -200,10 +207,6 @@ export default function DashboardPage() {
             </Typography>
         )}
 
-        <Paper sx={{ p: 1, mb: 1.5 }}>
-          <ExcelImport onImport={handleImport} onOpenPrint={() => setIsPrintModalOpen(true)} />
-        </Paper>
-
         <DataTable
             records={records}
             loading={loading}
@@ -212,6 +215,8 @@ export default function DashboardPage() {
             onSelectionChange={setSelectedRows}
             onDeleteRows={handleDeleteRows}
             initialSelectedIds={initialSelectedIds}
+            onImport={handleImport}
+            onOpenPrint={() => setIsPrintModalOpen(true)}
         />
 
         {/* רנדור המודאל והעברת הרשומות המסומנות אליו */}
@@ -220,5 +225,5 @@ export default function DashboardPage() {
             onClose={() => setIsPrintModalOpen(false)}
             selectedRows={selectedRows}
         />
-      </Container>
+      </Box>
   );}
