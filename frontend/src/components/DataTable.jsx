@@ -70,7 +70,7 @@ export default function DataTable({
   const [activeFilters, setActiveFilters] = useState([]);
   const [inputValue, setInputValue] = useState('');
   const [fieldDefs, setFieldDefs] = useState([]);
-    const [importedFieldDefs, setImportedFieldDefs] = useState([]);
+
   const [problemQueue, setProblemQueue] = useState([]); // תורי תאים שצריך לתקן לפני שמירה - {id, field}
   const [contextMenu, setContextMenu] = useState(null); // { mouseX, mouseY, id, field } - קליק ימני על תא כתובת
   const [secondarySortFields, setSecondarySortFields] = useState([]); // תת-מיון: שרשרת עמודות לשבירת שוויון, לפי בחירת המשתמשת

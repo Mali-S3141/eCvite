@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Button, Typography, Box } from '@mui/material';
 import * as XLSX from 'xlsx';
-import api from '../services/api';
+
 import { getExcelColumns, invalidateExcelColumnsCache } from '../services/excelColumnsCache';
 import { matchExcelHeaders, matchByValues, remapRows } from '../utils/excelColumnMatcher';
 import ColumnMatchDialog, { IGNORE_VALUE } from './ColumnMatchDialog';
