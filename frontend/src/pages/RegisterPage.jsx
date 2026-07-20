@@ -104,8 +104,15 @@ export default function RegisterPage() {
         }
 
         try {
-            await api.register(user);
-            navigate("/login");
+            const response = await api.register(user);
+
+            localStorage.setItem(
+                "user",
+                JSON.stringify(response.data)
+            );
+
+            navigate("/dashboard");
+
         } catch (err) {
             alert("ההרשמה נכשלה");
         }
@@ -138,6 +145,7 @@ export default function RegisterPage() {
                     <TextField
                         label="שם פרטי"
                         name="firstNameWoman"
+                        required
                         value={user.firstNameWoman}
                         onChange={handleChange}
                     />
@@ -145,6 +153,7 @@ export default function RegisterPage() {
                     <TextField
                         label="שם משפחה"
                         name="lastName"
+                        required
                         value={user.lastName}
                         onChange={handleChange}
                     />
@@ -204,6 +213,7 @@ export default function RegisterPage() {
                     <TextField
                         label="עיר"
                         name="city"
+                        required
                         value={user.city}
                         onChange={handleChange}
                     />
@@ -211,6 +221,7 @@ export default function RegisterPage() {
                     <TextField
                         label="רחוב"
                         name="street"
+                        required
                         value={user.street}
                         onChange={handleChange}
                     />
@@ -218,6 +229,7 @@ export default function RegisterPage() {
                     <TextField
                         label="מספר בית"
                         name="houseNumber"
+                        required
                         value={user.houseNumber}
                         onChange={handleChange}
                     />

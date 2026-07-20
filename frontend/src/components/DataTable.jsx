@@ -611,6 +611,7 @@ export default function DataTable({
         autoHeight
         rows={filteredRows}
         columns={columns}
+        getRowId={(row) => row.hashCode}
         loading={loading}
         checkboxSelection
         disableSelectionOnClick

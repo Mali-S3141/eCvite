@@ -12,10 +12,10 @@ function App() {
     <Routes>
       <Route path="/login" element={<LoginPage />} />
       <Route path="/register" element={<RegisterPage />} />
-      <Route
-        path="/"
-        element={loggedIn ? <DashboardPage /> : <Navigate to="/login" replace />}
-      />
+        <Route
+            path="/dashboard"
+            element={loggedIn ? <DashboardPage /> : <Navigate to="/login" replace />}
+        />
       {/* הוספת הנתיב החדש */}
         <Route
             path="/print-preview"
