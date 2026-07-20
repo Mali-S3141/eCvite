@@ -435,6 +435,13 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
   };
 
 
+  const orderedFieldDefs = useMemo(
+      () =>
+          fieldDefs
+              .slice()
+              .sort((a, b) => (a.defaultOrder ?? 999) - (b.defaultOrder ?? 999)),
+      [fieldDefs]
+  );
   const orderedFieldNames = useMemo(() => orderedFieldDefs.map((f) => f.technicalName), [orderedFieldDefs]);
 
   // סורקת את כל השורות (לפי סדר השורות והעמודות בטבלה) ומחזירה רשימה מסודרת של
