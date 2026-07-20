@@ -13,11 +13,11 @@ const HOUSE_NO_PATTERN = /^\d+[a-zA-Zא-ת]?$/;
 
 // שדות מערכת/ביקורת (לא "פרטי אורח") - לא מנוהלים דרך excel_columns, נשארים קבועים בקוד
 const systemColumns = [
-  { field: 'hashCode', headerName: 'מפתח', width: 120, editable: false },
-  { field: 'changed', headerName: 'שונה', width: 100, editable: false, type: 'boolean' },
-  { field: 'changeDate', headerName: 'תאריך שינוי', width: 130, editable: false },
-  { field: 'changeBy', headerName: 'שונה ע"י', width: 130, editable: false },
-  { field: 'createdBy', headerName: 'נוצר ע"י', width: 130, editable: false },
+  { field: 'hashCode', headerName: 'מפתח', flex: 1, minWidth: 90, editable: false },
+  { field: 'changed', headerName: 'שונה', flex: 0.6, minWidth: 70, editable: false, type: 'boolean' },
+  { field: 'changeDate', headerName: 'תאריך שינוי', flex: 0.8, minWidth: 90, editable: false },
+  { field: 'changeBy', headerName: 'שונה ע"י', flex: 0.8, minWidth: 90, editable: false },
+  { field: 'createdBy', headerName: 'נוצר ע"י', flex: 0.8, minWidth: 90, editable: false },
 ];
 
 const SYSTEM_FIELDS_HIDDEN_BY_DEFAULT = {
@@ -135,6 +135,7 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
       container.removeEventListener('mouseleave', handleMouseLeave);
     };
   }, []);
+
 
   // סדר העמודות ומה מוצג כברירת מחדל נקבעים ב-excel_columns (ב-Neon), לא בקוד -
   // נטען פעם אחת (getExcelColumns ממטמנת) ולא בכל טעינה מחדש
@@ -292,11 +293,10 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
           alignItems: 'center',
           justifyContent: 'space-between',
           width: '100%',
-          overflow: 'hidden',
           '&:hover .move-to-note-icon': { opacity: 1 },
         }}
       >
-        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{value}</span>
+        <span style={{ whiteSpace: 'normal', wordBreak: 'break-word' }}>{value}</span>
         {value && (
           <IconButton
             className="move-to-note-icon"
@@ -326,6 +326,10 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
     () => Array.from(new Set(rows.map((row) => row.suffix).filter((v) => v && String(v).trim()))),
     [rows]
   );
+  const belongsToOptions = useMemo(
+    () => Array.from(new Set(rows.map((row) => row.belongsTo).filter((v) => v && String(v).trim()))),
+    [rows]
+  );
 
   const applyPickListValue = useCallback((id, field, value) => {
     const updatedRows = rowsRef.current.map((row) =>
@@ -345,10 +349,9 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
             alignItems: 'center',
             justifyContent: 'space-between',
             width: '100%',
-            overflow: 'hidden',
           }}
         >
-          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{value}</span>
+          <span style={{ whiteSpace: 'normal', wordBreak: 'break-word' }}>{value}</span>
           <IconButton
             size="small"
             title="בחר מהערכים הקיימים בעמודה"
@@ -365,6 +368,8 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
     };
     return PickListCell;
   }, []);
+
+
 
     const handleInputChange = (e) => {
     setInputValue(e.target.value);
@@ -433,6 +438,36 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
     return false;
   };
 
+  // ברמת שורה (editMode="row") השורה כולה נשארת פתוחה לעריכה עד שעוזבים אותה לגמרי -
+  // כדי שהצביעה על שדה מסוים תיעלם ברגע שעוזבים אותו (גם עם העכבר, לא רק Enter/Tab),
+  // מאזינים ישירות לאירוע focusout הטבעי של הדפדפן (לא תלוי באיך בדיוק עזבו את התא)
+  // ובודקים מחדש רק את השדה הספציפי הזה שאיבד פוקוס
+  useEffect(() => {
+    const container = gridContainerRef.current;
+    if (!container || problemQueue.length === 0) return undefined;
+
+    const handleFocusOut = (event) => {
+      const cellEl = event.target.closest('.MuiDataGrid-cell');
+      if (!cellEl) return;
+      const field = cellEl.getAttribute('data-field');
+      const rowEl = cellEl.closest('.MuiDataGrid-row');
+      const id = rowEl ? rowEl.getAttribute('data-id') : null;
+      if (!id || !field) return;
+
+      // ה-DataGrid מעדכן את הערך בפועל רק אחרי שה-focusout מסתיים
+      setTimeout(() => {
+        const value = apiRef.current.getCellValue(id, field);
+        const stillInvalid = (requiredFields.has(field) && !value) || isValueInvalid(field, value);
+        if (stillInvalid) return;
+        setProblemQueue((prev) => prev.filter((p) => !(String(p.id) === String(id) && p.field === field)));
+      }, 0);
+    };
+
+    container.addEventListener('focusout', handleFocusOut);
+    return () => container.removeEventListener('focusout', handleFocusOut);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [problemQueue, requiredFields]);
+
   const orderedFieldDefs = useMemo(
     () => fieldDefs.slice().sort((a, b) => (a.defaultOrder ?? 999) - (b.defaultOrder ?? 999)),
     [fieldDefs]
@@ -468,11 +503,20 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
     const dynamicColumns = orderedFieldDefs.map((f) => {
       const isBoolean = f.technicalName === 'print';
       const pickListOptions =
-        f.technicalName === 'prefix' ? prefixOptions : f.technicalName === 'suffix' ? suffixOptions : null;
+        f.technicalName === 'prefix'
+          ? prefixOptions
+          : f.technicalName === 'suffix'
+          ? suffixOptions
+          : f.technicalName === 'belongsTo'
+          ? belongsToOptions
+          : null;
       return {
         field: f.technicalName,
         headerName: f.isRequired ? `${f.displayName} *` : f.displayName,
-        width: isBoolean ? 90 : 130,
+        // flex במקום width קבוע - כל העמודות מתחלקות ברוחב שיש בפועל, כדי שהטבלה
+        // תמיד תיכנס בלי גלילה אופקית (בשילוב עם עטיפת שורות במקום חיתוך טקסט)
+        flex: isBoolean ? 0.6 : 1,
+        minWidth: isBoolean ? 70 : 90,
         editable: true,
         type: isBoolean ? 'boolean' : undefined,
         renderCell: pickListOptions
@@ -485,7 +529,7 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
     });
 
     return [...dynamicColumns, ...systemColumns];
-  }, [orderedFieldDefs, renderAddressCell, secondarySortFields, prefixOptions, suffixOptions, renderPickListCell]);
+  }, [orderedFieldDefs, renderAddressCell, secondarySortFields, prefixOptions, suffixOptions, belongsToOptions, renderPickListCell]);
 
   const handleAddSecondarySort = (field) => {
     if (!field || secondarySortFields.includes(field)) return;
@@ -708,10 +752,13 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
         checkboxSelection
         disableSelectionOnClick
         getCellClassName={(params) => {
+          // צביעה בכלל לא קורית לפני שהיה ניסיון שמירה שנחסם - שורה חדשה/ריקה לא נצבעת
+          // מיד, רק אחרי שלוחצים "שמור את כל המוזמנים" ונמצאות בעיות בפועל
+          if (problemQueue.length === 0) return '';
+
           // התא הספציפי שקפצנו אליו כרגע (הראשון בתור התיקונים) - מודגש הרבה יותר חזק
           // מכל שאר תאי הבעיה, כדי שיהיה ברור בבירור לאיפה קפצו
           if (
-            problemQueue.length > 0 &&
             String(params.id) === String(problemQueue[0].id) &&
             params.field === problemQueue[0].field
           ) {

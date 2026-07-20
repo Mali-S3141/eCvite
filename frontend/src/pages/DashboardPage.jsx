@@ -224,6 +224,7 @@ export default function DashboardPage() {
             open={isPrintModalOpen}
             onClose={() => setIsPrintModalOpen(false)}
             selectedRows={selectedRows}
+            records={records}
         />
       </Box>
   );}

@@ -63,7 +63,7 @@ function MockLabel({ width, height }) {
 // תצוגה קטנה בצד: מדבקה בודדת + רשת מדבקות שמדמה איך הדף המודפס ייראה.
 // הרוחב הכולל של הפאנל קבוע (PREVIEW_PANEL_WIDTH) ולא משתנה - רק המדבקות עצמן גדלות/קטנות בתוכו.
 function LabelSheetPreview({ labelSize }) {
-  const size = MOCK_LABEL_SIZES[labelSize] || MOCK_LABEL_SIZES.medium;
+  const size = MOCK_LABEL_SIZES[labelSize] || MOCK_LABEL_SIZES.standard;
   const { columns, count } = getLabelsPerPage(size);
 
   return (
@@ -102,8 +102,11 @@ function LabelSheetPreview({ labelSize }) {
   );
 }
 
-export default function PrintModal({ open, onClose, selectedRows }) {
+export default function PrintModal({ open, onClose, selectedRows, records = [] }) {
   const navigate = useNavigate();
+
+  // אם לא סימנו אף שורה - מדפיסים את כולן, במקום לא להדפיס כלום
+  const rowsToPrint = selectedRows.length > 0 ? selectedRows : records;
   
   // 1. בדיקה בטוחה עבור השלב (Step)
   const [step, setStep] = useState(() => {
@@ -116,9 +119,9 @@ export default function PrintModal({ open, onClose, selectedRows }) {
   // 2. בדיקה בטוחה עבור גודל המדבקה
   const [labelSize, setLabelSize] = useState(() => {
     if (typeof window !== 'undefined') {
-      return sessionStorage.getItem('savedLabelSize') || 'medium';
+      return sessionStorage.getItem('savedLabelSize') || 'standard';
     }
-    return 'medium';
+    return 'standard';
   });
 
   // 3. בדיקה בטוחה עבור המדפסת - מתעלמת מערך שמור ישן שכבר לא תקין (כמו "printer1" מגרסה קודמת)
@@ -160,11 +163,11 @@ export default function PrintModal({ open, onClose, selectedRows }) {
   };
 
   const handlePrint = () => {
-    const printerLabel = printer === 'office' ? MODAL_TEXTS.PRINTER_OFFICE : MODAL_TEXTS.PRINTER_HOME;
-    const deliveryPart = printer === 'office'
-      ? ` (${deliveryMethod === 'pickup' ? MODAL_TEXTS.DELIVERY_PICKUP : MODAL_TEXTS.DELIVERY_COURIER})`
-      : '';
-    alert(`שולח להדפסה ב${printerLabel}${deliveryPart} בגודל ${labelSize} עבור ${selectedRows.length} רשומות.`);
+    // אותו דף הדפסה בדיוק כמו מה"תצוגה מקדימה" - רק עם דגל שגורם לו לפתוח את חלון
+    // ההדפסה של הדפדפן מיד בכניסה, בלי לחכות שילחצו שוב על "הדפס" שם
+    navigate('/print-preview', {
+      state: { selectedItems: rowsToPrint, labelSize, printer, fontType, deliveryMethod, autoPrint: true },
+    });
 
     sessionStorage.removeItem('fromPreview');
     sessionStorage.removeItem('savedLabelSize');
@@ -177,7 +180,7 @@ export default function PrintModal({ open, onClose, selectedRows }) {
   };
 
   const handlePreview = () => {
-    navigate('/print-preview', { state: { selectedItems: selectedRows, labelSize, printer, fontType, deliveryMethod } });
+    navigate('/print-preview', { state: { selectedItems: rowsToPrint, labelSize, printer, fontType, deliveryMethod } });
   };
 
   return (
@@ -232,11 +235,16 @@ export default function PrintModal({ open, onClose, selectedRows }) {
                     label={MODAL_TEXTS.SIZE_INPUT_LABEL}
                     onChange={(e) => setLabelSize(e.target.value)}
                   >
-                    <MenuItem value="small">{MODAL_TEXTS.SIZE_SMALL}</MenuItem>
-                    <MenuItem value="medium">{MODAL_TEXTS.SIZE_MEDIUM}</MenuItem>
+                    <MenuItem value="standard">{MODAL_TEXTS.SIZE_STANDARD}</MenuItem>
                     <MenuItem value="large">{MODAL_TEXTS.SIZE_LARGE}</MenuItem>
                   </Select>
                 </FormControl>
+
+                {labelSize === 'large' && (
+                  <Typography variant="body2" color="error">
+                    {MODAL_TEXTS.SIZE_LARGE_UNAVAILABLE}
+                  </Typography>
+                )}
 
                 <FormControl fullWidth>
                   <InputLabel id="printer-label">{MODAL_TEXTS.PRINTER_INPUT_LABEL}</InputLabel>
@@ -273,8 +281,8 @@ export default function PrintModal({ open, onClose, selectedRows }) {
             <Stack direction="row" spacing={1} justifyContent="space-between" mt={4}>
               <Button onClick={() => setStep(1)} color="inherit">{MODAL_TEXTS.BUTTON_BACK}</Button>
               <Stack direction="row" spacing={1}>
-                <Button variant="outlined" onClick={handlePreview}>{MODAL_TEXTS.BUTTON_PREVIEW}</Button>
-                <Button variant="contained" onClick={handlePrint} color="success">{MODAL_TEXTS.BUTTON_PRINT}</Button>
+                <Button variant="outlined" onClick={handlePreview} disabled={labelSize === 'large'}>{MODAL_TEXTS.BUTTON_PREVIEW}</Button>
+                <Button variant="contained" onClick={handlePrint} color="success" disabled={labelSize === 'large'}>{MODAL_TEXTS.BUTTON_PRINT}</Button>
               </Stack>
             </Stack>
           </Box>
