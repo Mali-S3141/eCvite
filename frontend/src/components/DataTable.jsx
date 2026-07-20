@@ -65,6 +65,7 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
   const [activeFilters, setActiveFilters] = useState([]);
   const [inputValue, setInputValue] = useState('');
   const [fieldDefs, setFieldDefs] = useState([]);
+
   const [problemQueue, setProblemQueue] = useState([]); // תורי תאים שצריך לתקן לפני שמירה - {id, field}
   const [contextMenu, setContextMenu] = useState(null); // { mouseX, mouseY, id, field } - קליק ימני על תא כתובת
   const [pickListMenu, setPickListMenu] = useState(null); // { anchorEl, id, field, options } - חץ בחירה מערכים קיימים
@@ -433,10 +434,7 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
     return false;
   };
 
-  const orderedFieldDefs = useMemo(
-    () => fieldDefs.slice().sort((a, b) => (a.defaultOrder ?? 999) - (b.defaultOrder ?? 999)),
-    [fieldDefs]
-  );
+
   const orderedFieldNames = useMemo(() => orderedFieldDefs.map((f) => f.technicalName), [orderedFieldDefs]);
 
   // סורקת את כל השורות (לפי סדר השורות והעמודות בטבלה) ומחזירה רשימה מסודרת של
