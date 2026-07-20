@@ -1,6 +1,7 @@
 package com.example.excelapp.entity;
 
 import jakarta.persistence.*;
+import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
@@ -13,7 +14,8 @@ import java.util.Objects;
 @Entity
 @Table(name = "recipients") // שם הטבלה ב-Neon
 @Data // <--- האנוטציה הזו מייצרת את כל ה-Setters וה-Getters אוטומטית!
-@NoArgsConstructor // מייצר קונסטרקטור ריק שחובה עבור JPA
+@NoArgsConstructor
+@AllArgsConstructor// מייצר קונסטרקטור ריק שחובה עבור JPA
 public class Recipients {
 
     @Id
@@ -85,8 +87,6 @@ public class Recipients {
         }
     }
 
-    public void setUser(User user) {
 
-    }
 }
 

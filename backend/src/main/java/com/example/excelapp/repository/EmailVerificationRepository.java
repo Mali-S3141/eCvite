@@ -1,4 +1,9 @@
 package com.example.excelapp.repository;
 
-public interface EmailVerificationRepository {
+import com.example.excelapp.entity.EmailVerification;
+import org.springframework.data.jpa.repository.JpaRepository;
+
+public interface EmailVerificationRepository
+        extends JpaRepository<EmailVerification, String> {
+
 }

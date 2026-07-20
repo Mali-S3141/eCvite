@@ -15,7 +15,7 @@ import java.util.List;
 @Service
 public class ExcelService {
 
-    public List<Recipients> readExcel(MultipartFile file) throws IOException {
+    public List<Recipients> readExcel(MultipartFile file, String userHashCode) throws IOException {
 
         List<Recipients> recipientsList = new ArrayList<>();
 

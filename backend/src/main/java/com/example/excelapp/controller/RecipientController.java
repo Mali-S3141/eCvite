@@ -58,7 +58,29 @@ public class RecipientController {
         this.userRecipientsRepository = userRecipientsRepository;
         this.userRepository = userRepository;
     }
+    @GetMapping
+    @Transactional(readOnly = true)
+    public ResponseEntity<?> getRecipients(
+            @RequestParam String phone
+    ) {
 
+        User user = userRepository.findByPhone(phone);
+
+        if (user == null) {
+            return ResponseEntity
+                    .status(HttpStatus.NOT_FOUND)
+                    .body("User not found");
+        }
+
+        List<UserRecipients> links =
+                userRecipientsRepository.findByUser(user);
+
+        List<Recipients> recipients = links.stream()
+                .map(UserRecipients::getRecipient)
+                .toList();
+
+        return ResponseEntity.ok(recipients);
+    }
     @PostMapping("/save")
     @Transactional
     public ResponseEntity<?> saveRecipients(

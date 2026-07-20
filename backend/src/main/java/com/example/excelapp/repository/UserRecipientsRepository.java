@@ -1,6 +1,7 @@
 package com.example.excelapp.repository;
 
 import com.example.excelapp.entity.User;
+import com.example.excelapp.entity.UserRecipientId;
 import com.example.excelapp.entity.UserRecipients;
 import com.example.excelapp.entity.Recipients;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -8,7 +9,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import java.util.List;
 
 public interface UserRecipientsRepository
-        extends JpaRepository<UserRecipients, Long> {
+        extends JpaRepository<UserRecipients, UserRecipientId> {
 
     boolean existsByUserAndRecipient(User user, Recipients recipient);
 

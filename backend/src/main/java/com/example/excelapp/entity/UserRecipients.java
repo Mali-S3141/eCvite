@@ -4,24 +4,29 @@ import jakarta.persistence.*;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+@Entity
+@Table(name = "user_recipients")
+@Data
+@NoArgsConstructor
+public class UserRecipients {
 
-    @Entity
-    @Table(name = "user_recipients")
-    @Data
-    @NoArgsConstructor
-    public class UserRecipients {
-        @Id
-        @GeneratedValue(strategy = GenerationType.IDENTITY)
-        private Long id;
+    @EmbeddedId
+    private UserRecipientId id;
+
+    @ManyToOne
+    @MapsId("userHashCode")
+    @JoinColumn(
+            name="user_hash_code",
+            referencedColumnName="hash_code"
+    )
+    private User user;
 
 
-        @ManyToOne
-        @JoinColumn(name = "user_id")
-        private User user;
-
-
-        @ManyToOne
-        @JoinColumn(name = "recipient_id", referencedColumnName = "hash_code")
-        private Recipients recipient;
-    }
-
+    @ManyToOne
+    @MapsId("recipientHashCode")
+    @JoinColumn(
+            name="recipient_hash_code",
+            referencedColumnName="hash_code"
+    )
+    private Recipients recipient;
+}

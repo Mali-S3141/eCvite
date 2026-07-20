@@ -13,6 +13,19 @@ public class AuthService {
         this.userRepository = userRepository;
     }
     public User register(User user) {
+
+        System.out.println("לפני יצירת hash:");
+        System.out.println(user);
+
+        String hash = user.generateHashCode();
+
+        System.out.println("Hash שנוצר: " + hash);
+
+        user.setHashCode(hash);
+
+        System.out.println("אחרי setHashCode:");
+        System.out.println(user);
+
         return userRepository.save(user);
     }
     public User findUser(String name, String phone) {
