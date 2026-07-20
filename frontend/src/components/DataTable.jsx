@@ -343,13 +343,7 @@ export default function DataTable({
     return false;
   };
 
-    const orderedFieldDefs = useMemo(
-        () =>
-            (importedFieldDefs.length > 0 ? importedFieldDefs : fieldDefs)
-                .slice()
-                .sort((a, b) => (a.defaultOrder ?? 999) - (b.defaultOrder ?? 999)),
-        [fieldDefs, importedFieldDefs]
-    );
+
   const orderedFieldNames = useMemo(() => orderedFieldDefs.map((f) => f.technicalName), [orderedFieldDefs]);
 
   // סורקת את כל השורות (לפי סדר השורות והעמודות בטבלה) ומחזירה רשימה מסודרת של
