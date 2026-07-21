@@ -13,6 +13,9 @@ public class AuthService {
         this.userRepository = userRepository;
     }
     public User register(User user) {
+        if (user.getHashCode() == null || user.getHashCode().isEmpty()) {
+            user.setHashCode(user.generateHashCode());
+        }
         return userRepository.save(user);
     }
     public User findUser(String name, String phone) {
