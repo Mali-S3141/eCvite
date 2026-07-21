@@ -3,6 +3,7 @@ package com.example.excelapp.controller;
 import com.example.excelapp.entity.User;
 import com.example.excelapp.repository.UserRepository;
 import com.example.excelapp.service.AuthService;
+import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -36,7 +37,7 @@ private final UserRepository userRepository;
         return ResponseEntity.ok(user);
     }
     @PostMapping("/register")
-    public ResponseEntity<User> register(@RequestBody User user) {
+    public ResponseEntity<User> register(@Valid @RequestBody User user) {
 
         if (userRepository.findByPhone(user.getPhone()) != null) {
             return ResponseEntity.badRequest().build();

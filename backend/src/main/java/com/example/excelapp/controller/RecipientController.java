@@ -182,35 +182,45 @@ public class RecipientController {
         }
 
 
-        for (Recipients recipient : request.getRecipients()) {
+        List<Recipients> savedRecipients = new ArrayList<>();
 
-            // יצירת hash אם אין
-            if (recipient.getHashCode() == null) {
-                recipient.setHashCode(
-                        recipient.generateRowHashCode()
-                );
+        for (Recipients r : request.getRecipients()) {
+
+            // יצירת hash אם חסר
+            if (r.getHashCode() == null || r.getHashCode().isEmpty()) {
+                r.setHashCode(r.generateRowHashCode());
+            }
+
+            // בדיקה האם הנמען כבר קיים - אם כן, משתמשים ברשומה הקיימת ולא דורסים אותה
+            // בנתונים חלקיים מהייבוא הנוכחי (אותה בדיקה שיש כבר ב-saveRecipients)
+            Recipients existing =
+                    recipientRepository.findById(r.getHashCode())
+                            .orElse(null);
+
+            if (existing != null) {
+                savedRecipients.add(existing);
+            } else {
+                savedRecipients.add(recipientRepository.save(r));
             }
         }
 
 
-        List<Recipients> savedRecipients =
-                recipientRepository.saveAll(request.getRecipients());
+        // יצירת מצביעים למשתמש - רק לנמענים שעדיין לא מקושרים אליו, כדי לא ליצור קישורים כפולים
+        List<UserRecipients> links = savedRecipients.stream()
+                .filter(recipient ->
+                        !userRecipientsRepository.existsByUserAndRecipient(user, recipient)
+                )
+                .map(recipient -> {
 
+                    UserRecipients link = new UserRecipients();
 
-        List<UserRecipients> links =
-                savedRecipients.stream()
-                        .map(recipient -> {
+                    link.setUser(user);
+                    link.setRecipient(recipient);
 
-                            UserRecipients link =
-                                    new UserRecipients();
+                    return link;
 
-                            link.setUser(user);
-                            link.setRecipient(recipient);
-
-                            return link;
-
-                        })
-                        .toList();
+                })
+                .toList();
 
 
         userRecipientsRepository.saveAll(links);

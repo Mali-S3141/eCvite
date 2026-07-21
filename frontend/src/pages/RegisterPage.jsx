@@ -109,8 +109,9 @@ export default function RegisterPage() {
         }
 
         try {
-            await api.register(user);
-            navigate("/login");
+            const response = await api.register(user);
+            localStorage.setItem('user', JSON.stringify(response.data));
+            navigate("/");
         } catch (err) {
             alert("ההרשמה נכשלה");
         }
@@ -213,6 +214,7 @@ export default function RegisterPage() {
                         name="city"
                         required
                         value={user.city}
+                        required
                         onChange={handleChange}
                     />
 
