@@ -9,6 +9,8 @@ frontend/.env.*.local
 backend/target/
 backend/.idea/
 backend/*.iml
+backend/.env.local
+backend/.env.*.local
 
 # OS
 .DS_Store

@@ -95,12 +95,15 @@ export default function DashboardPage() {
     return () => window.removeEventListener('beforeunload', handleBeforeUnload);
   }, [isTableDirty]);
 
-  const handleAutoSaveLocal = (updatedRows) => {
+  // עטוף ב-useCallback (לא פונקציה רגילה) כדי שהזהות שלו תישאר יציבה בין רינדורים -
+  // אחרת DataTable מקבל onAutoSave חדש בכל הקשה, מה שגורם לו לבנות מחדש את כל
+  // ה-columns שלו וקלטי העריכה מאבדים פוקוס אחרי כל אות (בדיוק הבאג שנתקלנו בו)
+  const handleAutoSaveLocal = useCallback((updatedRows) => {
     if (!user?.phone) return;
     saveLocalRecords(user.phone, updatedRows);
     setRecords(updatedRows);
     setIsTableDirty(true); //  בום! ברגע שיש שינוי בטבלה, האבא ננעל רשמית!
-  };
+  }, [user?.phone]);
 
   // מחיקה מפורשת ומיידית בשרת - רק ה-id-ים שבאמת נמחקו במסך, לא לפי השוואת רשימה מלאה
   const handleDeleteRows = async (idsToDelete) => {
@@ -224,6 +227,7 @@ export default function DashboardPage() {
             open={isPrintModalOpen}
             onClose={() => setIsPrintModalOpen(false)}
             selectedRows={selectedRows}
+            records={records}
         />
       </Box>
   );}

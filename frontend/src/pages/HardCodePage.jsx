@@ -13,9 +13,9 @@ export const MODAL_TEXTS = {
   SIZE_INPUT_LABEL: "בחירת גודל מדבקה",
   PRINTER_INPUT_LABEL: "בחירת מדפסת",
   
-  SIZE_SMALL: "קטן",
-  SIZE_MEDIUM: "בינוני",
+  SIZE_STANDARD: "סטנדרטי",
   SIZE_LARGE: "גדול",
+  SIZE_LARGE_UNAVAILABLE: "אפשרות גודל מדבקה גדול אינה זמינה כרגע",
   
   PRINTER_HOME: "מדפסת ביתית",
   PRINTER_OFFICE: "מדפסת המשרד",

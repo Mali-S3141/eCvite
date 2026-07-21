@@ -92,10 +92,6 @@ export default function RegisterPage() {
             setPhoneError(true);
             return;
         }
-        if (!emailVerified) {
-            alert("יש לאמת את המייל לפני הרשמה");
-            return;
-        }
         const gmailRegex = /^[a-zA-Z0-9._%+-]+@gmail\.com$/;
 
         if (!gmailRegex.test(user.email)) {
