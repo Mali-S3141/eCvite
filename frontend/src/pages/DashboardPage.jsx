@@ -191,9 +191,19 @@ export default function DashboardPage() {
     window.location.href = '/login';
   };
 
+  const getGreeting = () => {
+    const hour = new Date().getHours();
+    if (hour >= 5 && hour < 12) return 'בוקר טוב';
+    if (hour >= 12 && hour < 18) return 'צהריים טובים';
+    return 'ערב טוב';
+  };
+
   return (
       <Box sx={{ width: '100%', px: 2, pt: 0.5, pb: 6 }}>
-        <Box display="flex" justifyContent="flex-end" mb={0.25}>
+        <Box display="flex" justifyContent="space-between" alignItems="center" mb={0.25}>
+          <Typography variant="subtitle1" sx={{ fontWeight: 700, color: '#1e3a8a' }}>
+            {getGreeting()}, {user?.firstNameMan || user?.firstNameWoman || 'משתמש'}
+          </Typography>
           <Button
             variant="outlined"
             size="small"

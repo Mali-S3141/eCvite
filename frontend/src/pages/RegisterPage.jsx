@@ -22,6 +22,8 @@ export default function RegisterPage() {
     const [emailVerified, setEmailVerified] = useState(false);
     const [message, setMessage] = useState("");
     const [phoneError, setPhoneError] = useState(false);
+    const [agreeTerms, setAgreeTerms] = useState(false);
+    const [termsError, setTermsError] = useState("");
     const [user, setUser] = useState({
         firstNameMan: location.state?.name || "",
         firstNameWoman: "",
@@ -92,6 +94,11 @@ export default function RegisterPage() {
             setPhoneError(true);
             return;
         }
+        if (!agreeTerms) {
+            setTermsError("יש לאשר את תנאי השירות לפני ההרשמה");
+            return;
+        }
+        setTermsError("");
         const gmailRegex = /^[a-zA-Z0-9._%+-]+@gmail\.com$/;
 
         if (!gmailRegex.test(user.email)) {
@@ -135,6 +142,7 @@ export default function RegisterPage() {
                         label="שם פרטי"
                         name="firstNameWoman"
                         value={user.firstNameWoman}
+                        required
                         onChange={handleChange}
                     />
 
@@ -142,6 +150,7 @@ export default function RegisterPage() {
                         label="שם משפחה"
                         name="lastName"
                         value={user.lastName}
+                        required
                         onChange={handleChange}
                     />
 
@@ -201,6 +210,7 @@ export default function RegisterPage() {
                         label="עיר"
                         name="city"
                         value={user.city}
+                        required
                         onChange={handleChange}
                     />
 
@@ -208,6 +218,7 @@ export default function RegisterPage() {
                         label="רחוב"
                         name="street"
                         value={user.street}
+                        required
                         onChange={handleChange}
                     />
 
@@ -215,8 +226,29 @@ export default function RegisterPage() {
                         label="מספר בית"
                         name="houseNumber"
                         value={user.houseNumber}
+                        required
                         onChange={handleChange}
                     />
+
+                    <div>
+                        <input
+                            type="checkbox"
+                            checked={agreeTerms}
+                            onChange={(e) => {
+                                setAgreeTerms(e.target.checked);
+                                setTermsError("");
+                            }}
+                        />
+                        <span>
+                            {" "}אני מאשר/ת את{" "}
+                            <a href="/terms">תנאי השירות</a>
+                        </span>
+                        {termsError && (
+                            <div style={{ color: "red", marginTop: "8px" }}>
+                                {termsError}
+                            </div>
+                        )}
+                    </div>
 
                     <Button
                         type="submit"

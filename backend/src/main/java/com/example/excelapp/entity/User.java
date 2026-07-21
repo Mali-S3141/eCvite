@@ -3,9 +3,12 @@ package com.example.excelapp.entity;
 import jakarta.persistence.*;
 import lombok.*;
 
+import jakarta.validation.constraints.Pattern;
+
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.time.LocalDateTime;
 import java.util.Objects;
 
 @Entity
@@ -29,6 +32,7 @@ public class User {
     @Column(name = "last_name")
     private String lastName;
 
+    @Pattern(regexp = "^\\d{10}$", message = "מספר הטלפון חייב להכיל 10 ספרות")
     @Column(unique = true)
     private String phone;
 
@@ -43,6 +47,14 @@ public class User {
 
     @Column(name = "house_number")
     private String houseNumber;
+
+    @Column(name = "created_at", nullable = false, updatable = false)
+    private LocalDateTime createdAt;
+
+    @PrePersist
+    public void onCreate() {
+        createdAt = LocalDateTime.now();
+    }
 
     public String generateHashCode() {
         try {

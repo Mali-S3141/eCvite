@@ -837,6 +837,7 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
         apiRef={apiRef}
         autoHeight
         rows={filteredRows}
+        getRowId={(row) => row.hashCode ?? row.id}
         columns={columns}
         loading={loading}
         checkboxSelection
