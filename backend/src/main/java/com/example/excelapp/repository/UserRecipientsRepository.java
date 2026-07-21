@@ -14,7 +14,10 @@ public interface UserRecipientsRepository
 
     boolean existsByUserAndRecipient(User user, Recipients recipient);
 
-    List<UserRecipients> findByUser(User user);
+    // JOIN FETCH טוען את ה-recipient המקושר באותה שאילתה - בלי זה, כל recipient
+    // נטען ב-SELECT נפרד משלו (N+1), מה שהפך טעינת נמענים למשתמש עם הרבה רשומות לאיטית מאוד
+    @Query("SELECT ur FROM UserRecipients ur JOIN FETCH ur.recipient WHERE ur.user = :user")
+    List<UserRecipients> findByUser(@Param("user") User user);
 
     // מחזירה רק את מחרוזות ה-hash (לא את הישויות המלאות) - נמנעת מ-N+1 שאילתות
     // שהיו קורות אם היינו טוענים כל recipient בנפרד (ManyToOne ברירת מחדל הוא eager)
