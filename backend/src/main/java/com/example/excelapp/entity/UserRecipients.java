@@ -16,7 +16,7 @@ import lombok.NoArgsConstructor;
 
 
         @ManyToOne
-        @JoinColumn(name = "user_id")
+        @JoinColumn(name = "user_id", referencedColumnName = "hash_code")
         private User user;
 
 
