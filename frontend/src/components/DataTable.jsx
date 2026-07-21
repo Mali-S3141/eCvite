@@ -75,6 +75,7 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
   // ה-columns מחושבות רק פעם אחת (memo תלוי ב-fieldDefs) והפעולות שבתוכן (renderCell)
   // צריכות תמיד את השורות העדכניות ביותר - לכן משתמשים ב-ref ולא סוגרים על rows ישירות
   const rowsRef = useRef(rows);
+
   useEffect(() => {
     rowsRef.current = rows;
   }, [rows]);
@@ -838,10 +839,12 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
       </Box>
 
    <Box ref={gridContainerRef} sx={{ px: 1.5, pb: 1, pt: 0.75, maxWidth: '100%', overflowX: 'auto', position: 'relative' }}>
+
    <DataGrid
         apiRef={apiRef}
         autoHeight
         rows={filteredRows}
+        getRowId={(row) => row.hashCode ?? row.id}
         columns={columns}
         loading={loading}
         checkboxSelection
