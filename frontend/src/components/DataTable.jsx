@@ -75,6 +75,7 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
   // ה-columns מחושבות רק פעם אחת (memo תלוי ב-fieldDefs) והפעולות שבתוכן (renderCell)
   // צריכות תמיד את השורות העדכניות ביותר - לכן משתמשים ב-ref ולא סוגרים על rows ישירות
   const rowsRef = useRef(rows);
+
   useEffect(() => {
     rowsRef.current = rows;
   }, [rows]);
@@ -139,12 +140,17 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
 
   // סדר העמודות ומה מוצג כברירת מחדל נקבעים ב-excel_columns (ב-Neon), לא בקוד -
   // נטען פעם אחת (getExcelColumns ממטמנת) ולא בכל טעינה מחדש
-  useEffect(() => {
-    getExcelColumns()
-      .then(setFieldDefs)
-      .catch(() => setFieldDefs([]));
-  }, []);
-
+    useEffect(() => {
+        getExcelColumns()
+            .then((data) => {
+                console.log("EXCEL COLUMNS:", data);
+                setFieldDefs(data);
+            })
+            .catch((err) => {
+                console.log("COLUMN ERROR:", err);
+                setFieldDefs([]);
+            });
+    }, []);
   // ברשומות שמגיעות מהשרת החדש (Recipients) אין יותר שדה id מספרי - המזהה הייחודי
   // האמיתי הוא ה-hashCode (מפתח ראשי של הטבלה בפועל) - ה-DataGrid חייב שדה id ייחודי
   // לכל שורה, אז ממלאים אותו מה-hashCode כשהוא חסר
@@ -833,6 +839,7 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
       </Box>
 
    <Box ref={gridContainerRef} sx={{ px: 1.5, pb: 1, pt: 0.75, maxWidth: '100%', overflowX: 'auto', position: 'relative' }}>
+
    <DataGrid
         apiRef={apiRef}
         autoHeight

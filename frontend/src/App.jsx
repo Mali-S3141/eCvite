@@ -5,6 +5,7 @@ import PrintPreviewPage from './pages/PrintPreviewPage'; // עמוד חדש שנ
 import RegisterPage from "./pages/RegisterPage";
 import Terms from "./pages/Terms";
 function App() {
+
   // useLocation גורם ל-App להתעדכן בכל ניווט, כדי ש-loggedIn ייבדק מחדש אחרי login/logout
   useLocation();
   const loggedIn = Boolean(localStorage.getItem('user'));
@@ -23,7 +24,8 @@ function App() {
             element={loggedIn ? <PrintPreviewPage /> : <Navigate to="/login" replace />}
         />
         <Route path="/terms" element={<Terms />} />
-      <Route path="*" element={<Navigate to={loggedIn ? '/' : '/login'} replace />} />
+      <Route path="*" element={<Navigate to={loggedIn ? '/dashboard' : '/login'} replace />} />
+
     </Routes>
   );
 }
