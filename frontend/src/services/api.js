@@ -13,6 +13,13 @@ const api = {
 
   register: (data) =>
       apiClient.post("/auth/register", data),
+    sendVerificationCode: (email) =>
+        apiClient.post("/auth/send-code", { email }),
+    verifyCode: (email, code) =>
+        apiClient.post("/auth/verify-code", {
+            email,
+            code
+        }),
   getRecipients: (phone) =>
       apiClient.get('/recipients', { params: { phone } }),
     uploadExcel: (formData, phone) =>

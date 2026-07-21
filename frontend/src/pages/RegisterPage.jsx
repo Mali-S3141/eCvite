@@ -10,14 +10,18 @@ import {
     Typography,
 } from "@mui/material";
 import api from "../services/api";
-
+import { Alert } from "@mui/material";
 export default function RegisterPage() {
 
     const navigate = useNavigate();
     const location = useLocation();
 
     const [emailError, setEmailError] = useState(false);
-
+    const [codeSent, setCodeSent] = useState(false);
+    const [verificationCode, setVerificationCode] = useState("");
+    const [emailVerified, setEmailVerified] = useState(false);
+    const [message, setMessage] = useState("");
+    const [phoneError, setPhoneError] = useState(false);
     const [user, setUser] = useState({
         firstNameMan: location.state?.name || "",
         firstNameWoman: "",
@@ -43,12 +47,51 @@ export default function RegisterPage() {
             const gmailRegex = /^[a-zA-Z0-9._%+-]+@gmail\.com$/;
             setEmailError(value !== "" && !gmailRegex.test(value));
         }
+        if (name === "phone") {
+            const phoneRegex = /^\d{10}$/;
+            setPhoneError(value !== "" && !phoneRegex.test(value));
+        }
     };
 
+    const handleSendCode = async () => {
 
+        const gmailRegex = /^[a-zA-Z0-9._%+-]+@gmail\.com$/;
+
+        if (!gmailRegex.test(user.email)) {
+            setEmailError(true);
+            return;
+        }
+
+        try {
+            await api.sendVerificationCode(user.email);
+            setCodeSent(true);
+            setMessage("קוד האימות נשלח למייל");
+        } catch (err) {
+            alert("שגיאה בשליחת קוד האימות");
+        }
+    };
+    const handleVerifyCode = async () => {
+        try {
+            await api.verifyCode(
+                user.email,
+                verificationCode
+            );
+
+            setEmailVerified(true);
+            setMessage("המייל אומת בהצלחה");
+
+        } catch (err) {
+            setMessage("קוד שגוי או שפג התוקף");
+        }
+    };
     const handleRegister = async (e) => {
         e.preventDefault();
+        const phoneRegex = /^\d{10}$/;
 
+        if (!phoneRegex.test(user.phone)) {
+            setPhoneError(true);
+            return;
+        }
         const gmailRegex = /^[a-zA-Z0-9._%+-]+@gmail\.com$/;
 
         if (!gmailRegex.test(user.email)) {
@@ -68,9 +111,17 @@ export default function RegisterPage() {
     return (
         <Container maxWidth="sm" sx={{ mt: 4 }}>
             <Paper sx={{ p: 4 }}>
+
                 <Typography variant="h5" align="center" gutterBottom>
                     הרשמה למערכת
                 </Typography>
+
+                {message && (
+                    <Alert severity={emailVerified ? "success" : "info"}>
+                        {message}
+                    </Alert>
+                )}
+
 
                 <Box
                     component="form"
@@ -99,6 +150,9 @@ export default function RegisterPage() {
                         name="phone"
                         value={user.phone}
                         onChange={handleChange}
+                        required
+                        error={phoneError}
+                        helperText={phoneError ? "מספר הטלפון חייב להכיל 10 ספרות" : ""}
                     />
 
                     <TextField
@@ -110,7 +164,27 @@ export default function RegisterPage() {
                         error={emailError}
                         helperText={emailError ? "המייל שהוזן אינו תקין" : ""}
                     />
-
+                    <Button
+                        variant="outlined"
+                        onClick={handleSendCode}
+                    >
+                        שלח קוד אימות
+                    </Button>
+                    {codeSent && (
+                        <TextField
+                            label="קוד אימות"
+                            value={verificationCode}
+                            onChange={(e) => setVerificationCode(e.target.value)}
+                        />
+                    )}
+                    {codeSent && (
+                        <Button
+                            variant="outlined"
+                            onClick={handleVerifyCode}
+                        >
+                            אמת קוד
+                        </Button>
+                    )}
                     <TextField
                         select
                         label="עבור איזה שמחה?"
