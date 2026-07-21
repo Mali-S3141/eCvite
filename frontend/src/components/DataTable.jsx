@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Box, Button, Paper, Stack, Typography, TextField, Chip, Menu, MenuItem, IconButton } from '@mui/material';
+import { Box, Button, Paper, Stack, Typography, TextField, Chip, Menu, MenuItem, IconButton, Popper } from '@mui/material';
 import SwapHorizIcon from '@mui/icons-material/SwapHoriz';
 import ArrowDropDownIcon from '@mui/icons-material/ArrowDropDown';
 import CloseIcon from '@mui/icons-material/Close';
@@ -68,7 +68,6 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
 
   const [problemQueue, setProblemQueue] = useState([]); // תורי תאים שצריך לתקן לפני שמירה - {id, field}
   const [contextMenu, setContextMenu] = useState(null); // { mouseX, mouseY, id, field } - קליק ימני על תא כתובת
-  const [pickListMenu, setPickListMenu] = useState(null); // { anchorEl, id, field, options } - חץ בחירה מערכים קיימים
   const [exportMenuAnchor, setExportMenuAnchor] = useState(null); // כפתור "יצוא" - תפריט הדפסת מדבקות / הורדת קובץ
   const [secondarySortFields, setSecondarySortFields] = useState([]); // תת-מיון: שרשרת עמודות לשבירת שוויון, לפי בחירת המשתמשת
   const appliedInitialSelection = useRef(false);
@@ -239,25 +238,19 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
     }
   }, [onAutoSave, onDeleteRows]);
 
- const processRowUpdate = (newRow) => {
-    const updatedRows = rows.map((row) => (row.id === newRow.id ? newRow : row));
+  const handleCloseContextMenu = () => setContextMenu(null);
+
+  // כל התאים בטבלה (חוץ מכתובת/בוליאני) עובדים ישירות על ה-state, בלי להסתמך על
+  // "מצב עריכה" של ה-DataGrid (דאבל-קליק להיכנס לעריכה) - זה עוקף לגמרי בעיה שנתקלנו
+  // בה שבה כניסה למצב עריכה לא תמיד עבדה בצורה עקבית. כל תא הוא קלט חי תמיד, שמעדכן
+  // את השורה מיד עם כל הקשה
+  const updateCellValue = useCallback((id, field, value) => {
+    const updatedRows = rowsRef.current.map((row) =>
+      String(row.id) === String(id) ? { ...row, [field]: value } : row
+    );
     setRows(updatedRows);
     onAutoSave(updatedRows);
-
-    // אם אנחנו באמצע תהליך תיקון (אחרי שמירה שנחסמה) - בודקים מה עוד נשאר לתקן
-    // ומקפיצים אוטומטית לבעיה הבאה; אם הכל תוקן - שומרים בפועל
-    if (problemQueue.length > 0) {
-      const remaining = findProblemCells(updatedRows);
-      setProblemQueue(remaining);
-      if (remaining.length === 0) {
-        onSave(updatedRows);
-      }
-    }
-
-    return newRow;
-  };
-
-  const handleCloseContextMenu = () => setContextMenu(null);
+  }, [onAutoSave]);
 
   // מעבירה את הערך מתא בעמודת כתובת (כשהוא לא מתאים) לעמודת "הערת כתובת" -
   // ומרוקנת את התא המקורי. אם כבר יש תוכן בהערת הכתובת, משרשרת אליו במקום לדרוס
@@ -286,27 +279,58 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
   // אייקון קטן שמופיע כשעוברים עם העכבר על תא בעמודת כתובת - לחיצה עליו מעבירה
   // את הערך ישירות ל"הערת כתובת", כדי שהאפשרות תהיה גלויה ולא רק דרך קליק ימני
   const renderAddressCell = useCallback((params) => {
-    const value = params.value ? String(params.value) : '';
+    const { id, field, value } = params;
     return (
       <Box
         sx={{
           display: 'flex',
           alignItems: 'center',
-          justifyContent: 'space-between',
           width: '100%',
+          height: '100%',
+          px: 1,
           '&:hover .move-to-note-icon': { opacity: 1 },
         }}
       >
-        <span style={{ whiteSpace: 'normal', wordBreak: 'break-word' }}>{value}</span>
+        <input
+          value={value ?? ''}
+          onChange={(event) => updateCellValue(id, field, event.target.value)}
+          onClick={(event) => event.stopPropagation()}
+          // בלי stopPropagation כאן ה-DataGrid תופס את מקש הרווח כקיצור מקלדת שלו
+          // (למשל גלילה/בחירה) במקום לתת לו סתם להקליד תו רווח רגיל בתוך השדה.
+          // Enter מבצע blur על השדה - זה מפעיל את בדיקת ה-focusout הקיימת, שאם השדה
+          // תקין מסירה אותו מתור התיקונים וקופצת אוטומטית לתא הבעייתי הבא
+          onKeyDown={(event) => {
+            if (event.key === ' ') {
+              event.stopPropagation();
+              return;
+            }
+            if (event.key === 'Enter') {
+              event.preventDefault();
+              event.stopPropagation();
+              event.currentTarget.blur();
+            }
+          }}
+          style={{
+            flex: 1,
+            minWidth: 0,
+            border: 'none',
+            outline: 'none',
+            height: '100%',
+            font: 'inherit',
+            background: 'transparent',
+          }}
+        />
         {value && (
           <IconButton
             className="move-to-note-icon"
             size="small"
+            tabIndex={-1}
             title="העבר להערת כתובת"
             sx={{ opacity: 0, transition: 'opacity 0.15s', p: 0.25, flexShrink: 0 }}
+            onMouseDown={(event) => event.preventDefault()}
             onClick={(event) => {
               event.stopPropagation();
-              moveValueToAddressNote(params.id, params.field);
+              moveValueToAddressNote(id, field);
             }}
           >
             <SwapHorizIcon fontSize="inherit" />
@@ -314,63 +338,122 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
         )}
       </Box>
     );
-  }, [moveValueToAddressNote]);
+  }, [moveValueToAddressNote, updateCellValue]);
 
-  // עמודות שבהן יש חץ קטן שמציג את כל הערכים שכבר קיימים באותה עמודה בטבלה עצמה
-  // (בדפדפן - לא שאילתה ל-DB), כמו "הרב", "הרה"ג" בקידומת - בחירה מהתפריט קובעת
-  // את הערך מיד, בלי לגעת בעריכה הרגילה של התא (עדיין לחיצה כפולה כמו כל עמודה אחרת)
-  const prefixOptions = useMemo(
-    () => Array.from(new Set(rows.map((row) => row.prefix).filter((v) => v && String(v).trim()))),
-    [rows]
-  );
-  const suffixOptions = useMemo(
-    () => Array.from(new Set(rows.map((row) => row.suffix).filter((v) => v && String(v).trim()))),
-    [rows]
-  );
-  const belongsToOptions = useMemo(
-    () => Array.from(new Set(rows.map((row) => row.belongsTo).filter((v) => v && String(v).trim()))),
-    [rows]
-  );
+  // תא טקסט חי - קלט חופשי לגמרי תמיד, ואם יש pickListField (עמודות קידומת/סיום/
+  // שייך ל) גם חץ קטן לצידו שפותח Menu לבחירה מהערכים הקיימים באותה עמודה. שתי
+  // האפשרויות זמינות בו-זמנית. הרשימה מחושבת מ-rowsRef בזמן אמת כשפותחים אותה (לא
+  // memo שתלוי ב-rows) - בכוונה, כי memo כזה היה יוצר מערך options חדש בכל הקשה,
+  // מה שהיה מכריח את columns כולו להיווצר מחדש וגורם ל-DataGrid לאבד פוקוס מהקלט
+  // אחרי כל אות (בדיוק הבאג שנתקלנו בו)
+  const renderTextCell = useCallback((pickListField) => {
+    const TextCell = (params) => {
+      const { id, field, value } = params;
+      const [menuOpen, setMenuOpen] = useState(false);
+      const [menuOptions, setMenuOptions] = useState([]);
+      const boxRef = useRef(null);
 
-  const applyPickListValue = useCallback((id, field, value) => {
-    const updatedRows = rowsRef.current.map((row) =>
-      String(row.id) === String(id) ? { ...row, [field]: value } : row
-    );
-    setRows(updatedRows);
-    onAutoSave(updatedRows);
-  }, [onAutoSave]);
+      // בכוונה בלי MUI Menu כאן - ל-Menu יש "backdrop" בלתי נראה שמכסה את כל הדף
+      // (כדי לזהות קליק-מחוץ-לתפריט) והוא תופס את הקליק השני של דאבל-קליק על אותו
+      // input לפני שהוא מגיע אליו בכלל - זה מה ששבר את "בחירת מילה שלמה" בעמודות
+      // האלה בלבד. הפתרון: Popper (לא Menu/Popover) - אותו מנוע מיקום חכם מול
+      // עוגן (כולל RTL נכון), אבל בלי backdrop ובלי modal - ופורטל אוטומטי ל-body
+      // כדי לא להיחתך ע"י overflow:hidden של התא
+      const openMenu = () => {
+        const values = Array.from(
+          new Set(
+            rowsRef.current
+              .map((row) => row[pickListField])
+              .filter((v) => v && String(v).trim())
+          )
+        );
+        setMenuOptions(values);
+        setMenuOpen(true);
+      };
+      const closeMenu = () => setMenuOpen(false);
 
-  const renderPickListCell = useCallback((options) => {
-    const PickListCell = (params) => {
-      const value = params.value ? String(params.value) : '';
       return (
-        <Box
-          sx={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            width: '100%',
-          }}
-        >
-          <span style={{ whiteSpace: 'normal', wordBreak: 'break-word' }}>{value}</span>
-          <IconButton
-            size="small"
-            title="בחר מהערכים הקיימים בעמודה"
-            sx={{ p: 0.25, flexShrink: 0 }}
-            onClick={(event) => {
-              event.stopPropagation();
-              setPickListMenu({ anchorEl: event.currentTarget, id: params.id, field: params.field, options });
+        <Box ref={boxRef} sx={{ display: 'flex', alignItems: 'center', width: '100%', height: '100%', px: 1 }}>
+          <input
+            value={value ?? ''}
+            onChange={(event) => updateCellValue(id, field, event.target.value)}
+            onClick={(event) => event.stopPropagation()}
+            // בלי זה ה-DataGrid תופס את מקש הרווח כקיצור מקלדת שלו (למשל גלילה/בחירה)
+            // במקום לתת לו סתם להקליד תו רווח רגיל בתוך השדה
+            onKeyDown={(event) => {
+              if (event.key === ' ') event.stopPropagation();
             }}
-          >
-            <ArrowDropDownIcon fontSize="small" />
-          </IconButton>
+            // לחיצה/כניסה לתא בעמודות הבחירה פותחת את רשימת הערכים הקיימים, בלי צורך
+            // ללחוץ בנפרד על חץ - אפשר עדיין להקליד חופשי במקביל
+            onFocus={() => {
+              if (pickListField) openMenu();
+            }}
+            onBlur={closeMenu}
+            style={{
+              flex: 1,
+              minWidth: 0,
+              border: 'none',
+              outline: 'none',
+              height: '100%',
+              font: 'inherit',
+              background: 'transparent',
+            }}
+          />
+          {pickListField && (
+            <Popper
+              open={menuOpen}
+              anchorEl={boxRef.current}
+              placement="bottom-start"
+              style={{ zIndex: 1300 }}
+            >
+              <Paper
+                elevation={4}
+                sx={{ minWidth: boxRef.current?.offsetWidth ?? 120, maxHeight: 220, overflowY: 'auto' }}
+              >
+                {menuOptions.length ? (
+                  menuOptions.map((option) => (
+                    <MenuItem
+                      key={option}
+                      // מונע מהלחיצה על אפשרות "לגזול" פוקוס מה-input לפני שה-onClick
+                      // מספיק לרוץ - כך ה-input אף פעם לא מאבד פוקוס בזמן בחירה
+                      onMouseDown={(event) => event.preventDefault()}
+                      onClick={() => {
+                        updateCellValue(id, field, option);
+                        closeMenu();
+                      }}
+                    >
+                      {option}
+                    </MenuItem>
+                  ))
+                ) : (
+                  <MenuItem disabled>אין עדיין ערכים בעמודה הזו</MenuItem>
+                )}
+              </Paper>
+            </Popper>
+          )}
         </Box>
       );
     };
-    return PickListCell;
-  }, []);
+    // עוטפים ב-JSX (לא מחזירים את הפונקציה עצמה) כדי שריאקט יתייחס לכל תא כרכיב
+    // אמיתי עם fiber משלו - הכרחי כי יש כאן hooks (useState/useRef) בפנים. בלעדי זה
+    // ריאקט "מבלבל" בין hooks של תאים שונים (בדיוק השגיאה "Rendered more hooks...")
+    return (params) => <TextCell {...params} />;
+  }, [updateCellValue]);
 
-
+  // תא בוליאני חי (עמודת "הדפסה") - checkbox רגיל, בלי תלות במצב עריכה בכלל
+  const renderBooleanCell = useCallback((params) => {
+    const { id, field, value } = params;
+    return (
+      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '100%' }}>
+        <input
+          type="checkbox"
+          checked={Boolean(value)}
+          onChange={(event) => updateCellValue(id, field, event.target.checked)}
+          onClick={(event) => event.stopPropagation()}
+        />
+      </Box>
+    );
+  }, [updateCellValue]);
 
     const handleInputChange = (e) => {
     setInputValue(e.target.value);
@@ -455,12 +538,20 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
       const id = rowEl ? rowEl.getAttribute('data-id') : null;
       if (!id || !field) return;
 
-      // ה-DataGrid מעדכן את הערך בפועל רק אחרי שה-focusout מסתיים
+      // ה-DataGrid מעדכן את הערך בפועל רק אחרי שה-focusout מסתיים. הבדיקה קורית
+      // רק כשעוזבים את השדה (לא בכל הקשה) - כדי לא לקפוץ לתא הבא באמצע הקלדה,
+      // רק אחרי שבאמת סיימו לערוך אותו
       setTimeout(() => {
         const value = apiRef.current.getCellValue(id, field);
         const stillInvalid = (requiredFields.has(field) && !value) || isValueInvalid(field, value);
         if (stillInvalid) return;
-        setProblemQueue((prev) => prev.filter((p) => !(String(p.id) === String(id) && p.field === field)));
+        setProblemQueue((prev) => {
+          const remaining = prev.filter((p) => !(String(p.id) === String(id) && p.field === field));
+          if (remaining.length === 0 && prev.length > 0) {
+            onSave(rowsRef.current);
+          }
+          return remaining;
+        });
       }, 0);
     };
 
@@ -506,14 +597,9 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
   const columns = useMemo(() => {
     const dynamicColumns = orderedFieldDefs.map((f) => {
       const isBoolean = f.technicalName === 'print';
-      const pickListOptions =
-        f.technicalName === 'prefix'
-          ? prefixOptions
-          : f.technicalName === 'suffix'
-          ? suffixOptions
-          : f.technicalName === 'belongsTo'
-          ? belongsToOptions
-          : null;
+      const pickListField = ['prefix', 'suffix', 'belongsTo'].includes(f.technicalName)
+        ? f.technicalName
+        : null;
       return {
         field: f.technicalName,
         headerName: f.isRequired ? `${f.displayName} *` : f.displayName,
@@ -521,19 +607,23 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
         // תמיד תיכנס בלי גלילה אופקית (בשילוב עם עטיפת שורות במקום חיתוך טקסט)
         flex: isBoolean ? 0.6 : 1,
         minWidth: isBoolean ? 70 : 90,
-        editable: true,
+        // העריכה עצמה מתבצעת דרך קלט חי בתוך renderCell (ראו renderTextCell/
+        // renderBooleanCell/renderAddressCell) ולא דרך מצב העריכה של ה-DataGrid -
+        // editable נשאר false בכוונה כדי שדאבל-קליק לא ינסה גם לפתוח את עורך ברירת
+        // המחדל של הרשת מעל הקלט המותאם אישית שלנו
+        editable: false,
         type: isBoolean ? 'boolean' : undefined,
-        renderCell: pickListOptions
-          ? renderPickListCell(pickListOptions)
+        renderCell: isBoolean
+          ? renderBooleanCell
           : ADDRESS_FIELDS.includes(f.technicalName)
           ? renderAddressCell
-          : undefined,
+          : renderTextCell(pickListField),
         sortComparator: isBoolean ? undefined : createTextSortComparator(f.technicalName, secondarySortFields),
       };
     });
 
     return [...dynamicColumns, ...systemColumns];
-  }, [orderedFieldDefs, renderAddressCell, secondarySortFields, prefixOptions, suffixOptions, belongsToOptions, renderPickListCell]);
+  }, [orderedFieldDefs, renderAddressCell, renderBooleanCell, renderTextCell, secondarySortFields]);
 
   const handleAddSecondarySort = (field) => {
     if (!field || secondarySortFields.includes(field)) return;
@@ -566,7 +656,8 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
   }, [fieldDefs]);
 
   // בכל פעם שתור התיקונים מתעדכן (שמירה נחסמה, או שתוקן תא אחד וקפצנו לבא) -
-  // גוללים, ממקדים ופותחים לעריכה את התא הראשון בתור
+  // גוללים אל התא הראשון בתור וממקדים ישירות ב-input שבתוכו (התאים הם קלטים חיים
+  // תמיד, לא מסתמכים על מצב עריכה של ה-DataGrid, אז אין צורך "לפתוח" עריכה בכלל)
   useEffect(() => {
     if (problemQueue.length === 0 || !apiRef.current) return undefined;
     const target = problemQueue[0];
@@ -575,16 +666,11 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
 
     const colIndex = apiRef.current.getColumnIndex(target.field);
     apiRef.current.scrollToIndexes({ rowIndex, colIndex });
-    apiRef.current.setCellFocus(target.id, target.field);
-    // עריכה כאן היא ברמת שורה (editMode="row") - פותחים את כל השורה לעריכה
-    // וממקדים בפועל בשדה הבעייתי הספציפי. אם השורה כבר במצב עריכה (למשל יש בה כמה
-    // שדות בעייתיים ברצף) - startRowEditMode היה זורק שגיאה, אז רק ממקדים מחדש
     const timer = setTimeout(() => {
-      if (apiRef.current.getRowMode(target.id) === 'edit') {
-        apiRef.current.setCellFocus(target.id, target.field);
-      } else {
-        apiRef.current.startRowEditMode({ id: target.id, fieldToFocus: target.field });
-      }
+      const input = gridContainerRef.current?.querySelector(
+        `[data-id="${target.id}"] [data-field="${target.field}"] input`
+      );
+      input?.focus();
     }, 50);
     return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -754,7 +840,7 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
         columns={columns}
         loading={loading}
         checkboxSelection
-        disableSelectionOnClick
+        disableRowSelectionOnClick
         getCellClassName={(params) => {
           // צביעה בכלל לא קורית לפני שהיה ניסיון שמירה שנחסם - שורה חדשה/ריקה לא נצבעת
           // מיד, רק אחרי שלוחצים "שמור את כל המוזמנים" ונמצאות בעיות בפועל
@@ -836,8 +922,6 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
           },
         }}
         pageSizeOptions={[25, 50, 100]}
-        experimentalFeatures={{ newEditingApi: true }}
-        processRowUpdate={processRowUpdate}
         localeText={{
           toolbarLabel: 'כלים',
           toolbarDensityLabel: 'צפיפות',
@@ -944,28 +1028,6 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
       >
         <MenuItem onClick={handleMoveToAddressNote}>העבר להערת כתובת</MenuItem>
       </Menu>
-
-      <Menu
-        open={pickListMenu !== null}
-        anchorEl={pickListMenu?.anchorEl}
-        onClose={() => setPickListMenu(null)}
-      >
-        {pickListMenu?.options.length ? (
-          pickListMenu.options.map((option) => (
-            <MenuItem
-              key={option}
-              onClick={() => {
-                applyPickListValue(pickListMenu.id, pickListMenu.field, option);
-                setPickListMenu(null);
-              }}
-            >
-              {option}
-            </MenuItem>
-          ))
-        ) : (
-          <MenuItem disabled>אין עדיין ערכים בעמודה הזו</MenuItem>
-        )}
-      </Menu>
     </Paper>
 
       {/* שורת בחירה - צפה מעל הכותרת, לא דוחפת את הטבלה למטה כשהיא נפתחת/נסגרת */}
@@ -1045,3 +1107,6 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
     </Box>
   );
 }
+
+
+
