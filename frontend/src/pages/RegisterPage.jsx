@@ -36,7 +36,7 @@ export default function RegisterPage() {
         houseNumber: "",
     });
 
-
+    const phoneRegex = /^(05\d{8}|0[23489]\d{7})$/;
     const handleChange = (e) => {
         const { name, value } = e.target;
 
@@ -50,7 +50,7 @@ export default function RegisterPage() {
             setEmailError(value !== "" && !gmailRegex.test(value));
         }
         if (name === "phone") {
-            const phoneRegex = /^\d{10}$/;
+            const phoneRegex = /^(05\d{8}|0[23489]\d{7})$/;
             setPhoneError(value !== "" && !phoneRegex.test(value));
         }
     };
@@ -156,7 +156,6 @@ export default function RegisterPage() {
                         required
                         onChange={handleChange}
                     />
-
                     <TextField
                         label="פלאפון"
                         name="phone"
@@ -164,7 +163,7 @@ export default function RegisterPage() {
                         onChange={handleChange}
                         required
                         error={phoneError}
-                        helperText={phoneError ? "מספר הטלפון חייב להכיל 10 ספרות" : ""}
+                        helperText={phoneError ? "מספר טלפון לא תקין" : ""}
                     />
 
                     <TextField
