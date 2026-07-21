@@ -159,7 +159,8 @@ export default function ExcelImport({ onImport }) {
           json,
           matched,
           unmatchedHeaders: unmatchedWithData,
-          columns: loadedColumns
+          columns: loadedColumns,
+          headerLabels
         });
 
         return;

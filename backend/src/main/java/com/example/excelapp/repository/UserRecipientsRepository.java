@@ -4,6 +4,8 @@ import com.example.excelapp.entity.User;
 import com.example.excelapp.entity.UserRecipients;
 import com.example.excelapp.entity.Recipients;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
 import java.util.List;
 
@@ -12,4 +14,14 @@ public interface UserRecipientsRepository
 
     boolean existsByUserAndRecipient(User user, Recipients recipient);
 
-    List<UserRecipients> findByUser(User user);}
+    List<UserRecipients> findByUser(User user);
+
+    // מחזירה רק את מחרוזות ה-hash (לא את הישויות המלאות) - נמנעת מ-N+1 שאילתות
+    // שהיו קורות אם היינו טוענים כל recipient בנפרד (ManyToOne ברירת מחדל הוא eager)
+    @Query("SELECT ur.recipient.hashCode FROM UserRecipients ur WHERE ur.user = :user")
+    List<String> findRecipientHashCodesByUser(@Param("user") User user);
+
+    // רק שורות הקישור שבאמת רלוונטיות למחיקה (לפי hash) - במקום לטעון את כל
+    // הקישורים של המשתמש (כולל recipient מלא לכל אחד, eager) ולסנן בזיכרון
+    List<UserRecipients> findByUserAndRecipient_HashCodeIn(User user, List<String> hashCodes);
+}
