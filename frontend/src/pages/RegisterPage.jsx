@@ -22,6 +22,8 @@ export default function RegisterPage() {
     const [emailVerified, setEmailVerified] = useState(false);
     const [message, setMessage] = useState("");
     const [phoneError, setPhoneError] = useState(false);
+    const [agreeTerms, setAgreeTerms] = useState(false);
+    const [termsError, setTermsError] = useState("");
     const [user, setUser] = useState({
         firstNameMan: location.state?.name || "",
         firstNameWoman: "",
@@ -92,6 +94,13 @@ export default function RegisterPage() {
             setPhoneError(true);
             return;
         }
+        if (!agreeTerms) {
+            setTermsError("יש לאשר את תנאי השירות לפני ההרשמה");
+            return;
+        }
+
+        setTermsError("");
+
         const gmailRegex = /^[a-zA-Z0-9._%+-]+@gmail\.com$/;
 
         if (!gmailRegex.test(user.email)) {
@@ -135,6 +144,8 @@ export default function RegisterPage() {
                         label="שם פרטי"
                         name="firstNameWoman"
                         value={user.firstNameWoman}
+                        required
+
                         onChange={handleChange}
                     />
 
@@ -142,6 +153,7 @@ export default function RegisterPage() {
                         label="שם משפחה"
                         name="lastName"
                         value={user.lastName}
+                        required
                         onChange={handleChange}
                     />
 
@@ -164,27 +176,27 @@ export default function RegisterPage() {
                         error={emailError}
                         helperText={emailError ? "המייל שהוזן אינו תקין" : ""}
                     />
-                    <Button
-                        variant="outlined"
-                        onClick={handleSendCode}
-                    >
-                        שלח קוד אימות
-                    </Button>
-                    {codeSent && (
-                        <TextField
-                            label="קוד אימות"
-                            value={verificationCode}
-                            onChange={(e) => setVerificationCode(e.target.value)}
-                        />
-                    )}
-                    {codeSent && (
-                        <Button
-                            variant="outlined"
-                            onClick={handleVerifyCode}
-                        >
-                            אמת קוד
-                        </Button>
-                    )}
+                    {/*<Button*/}
+                    {/*    variant="outlined"*/}
+                    {/*    onClick={handleSendCode}*/}
+                    {/*>*/}
+                    {/*    שלח קוד אימות*/}
+                    {/*</Button>*/}
+                    {/*{codeSent && (*/}
+                    {/*    <TextField*/}
+                    {/*        label="קוד אימות"*/}
+                    {/*        value={verificationCode}*/}
+                    {/*        onChange={(e) => setVerificationCode(e.target.value)}*/}
+                    {/*    />*/}
+                    {/*)}*/}
+                    {/*{codeSent && (*/}
+                    {/*    <Button*/}
+                    {/*        variant="outlined"*/}
+                    {/*        onClick={handleVerifyCode}*/}
+                    {/*    >*/}
+                    {/*        אמת קוד*/}
+                    {/*    </Button>*/}
+                    {/*)}*/}
                     <TextField
                         select
                         label="עבור איזה שמחה?"
@@ -200,6 +212,7 @@ export default function RegisterPage() {
                     <TextField
                         label="עיר"
                         name="city"
+                        required
                         value={user.city}
                         onChange={handleChange}
                     />
@@ -208,16 +221,41 @@ export default function RegisterPage() {
                         label="רחוב"
                         name="street"
                         value={user.street}
+                        required
                         onChange={handleChange}
                     />
 
                     <TextField
                         label="מספר בית"
                         name="houseNumber"
+
                         value={user.houseNumber}
+                        required
                         onChange={handleChange}
                     />
+                    <div>
+                        <input
+                            type="checkbox"
+                            checked={agreeTerms}
+                            onChange={(e) => {
+                                setAgreeTerms(e.target.checked);
+                                setTermsError("");
+                            }}
+                        />
 
+                        <span>
+    אני מאשר/ת את{" "}
+                            <a href="/terms">
+      תנאי השירות
+    </a>
+  </span>
+
+                        {termsError && (
+                            <div style={{ color: "red", marginTop: "8px" }}>
+                                {termsError}
+                            </div>
+                        )}
+                    </div>
                     <Button
                         type="submit"
                         variant="contained"
