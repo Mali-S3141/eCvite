@@ -105,15 +105,16 @@ export default function DashboardPage() {
     setIsTableDirty(true); //  בום! ברגע שיש שינוי בטבלה, האבא ננעל רשמית!
   }, [user?.phone]);
 
-  // מחיקה מפורשת ומיידית בשרת - רק ה-id-ים שבאמת נמחקו במסך, לא לפי השוואת רשימה מלאה
-  const handleDeleteRows = async (idsToDelete) => {
-    const realIds = idsToDelete.filter((id) => typeof id === 'number' || /^\d+$/.test(id));
+  // מחיקה לא נשלחת לשרת מיד - רק נשמרת בתור "ממתינה" ונשלחת בפועל רק כשלוחצים "שמור
+  // את כל המוזמנים" (handleSave), יחד עם שאר השינויים. המזהה האמיתי של שורה שמורה
+  // הוא ה-hashCode (מחרוזת) - id מספרי טהור הוא שורה חדשה שעוד לא נשמרה בשרת בכלל
+  // (ר' handleAddRow/handleImport), ולכן אין מה למחוק בשבילה
+  const [pendingDeleteHashCodes, setPendingDeleteHashCodes] = useState([]);
+
+  const handleDeleteRows = (idsToDelete) => {
+    const realIds = idsToDelete.filter((id) => !(typeof id === 'number' || /^\d+$/.test(String(id))));
     if (!realIds.length) return;
-    try {
-      await api.deleteRecipients(realIds);
-    } catch (err) {
-      console.error('לא ניתן היה למחוק את הרשומות מהשרת:', err);
-    }
+    setPendingDeleteHashCodes((prev) => Array.from(new Set([...prev, ...realIds])));
   };
   const handleSave = async (updatedRows) => {
     console.log("1. כפתור שמור נלחץ בדאשבורד!");
@@ -147,6 +148,18 @@ export default function DashboardPage() {
 
       console.log("3. נשמר בהצלחה!", response.data);
 
+      // מוחקים בפועל מהשרת רק עכשיו, אחרי שהשמירה הצליחה - יחד עם שאר השינויים,
+      // לא ברגע שלוחצים על כפתור המחיקה בטבלה
+      if (pendingDeleteHashCodes.length > 0) {
+        try {
+          await api.deleteRecipients(user.phone, pendingDeleteHashCodes);
+          setPendingDeleteHashCodes([]);
+        } catch (deleteErr) {
+          console.error('❌ שגיאה במחיקה מהבקאנד:', deleteErr);
+          setError('השמירה הצליחה, אבל לא ניתן היה למחוק חלק מהשורות מהשרת.');
+        }
+      }
+
 
 
 
@@ -167,23 +180,22 @@ export default function DashboardPage() {
     }
   };
 
-  const handleImport = async (rows) => {
-    if (!user?.phone) return;
+  // ייבוא אקסל לא שומר לשרת מיד - רק מציג את השורות בטבלה מקומית, בדיוק כמו כל עריכה
+  // אחרת. השמירה בפועל ל-Neon קורית רק כשלוחצים "שמור את כל המוזמנים" (handleSave)
+  const handleImport = (rows) => {
+    // onImport נקרא לפעמים עם מערך שורות ולפעמים עם { rows, columns } - תלוי בנתיב
+    // בתוך ExcelImport - שני המבנים קיימים היום בפועל
+    const importedRows = Array.isArray(rows) ? rows : rows?.rows ?? [];
+    if (!importedRows.length || !user?.phone) return;
 
-    try {
-      const res = await api.importRecords(user.phone, rows);
-      const skipped = res.data?.skipped || 0;
-      setError(
-        skipped > 0
-          ? `הייבוא הושלם: ${skipped} שורות דולגו כי הן זהות לאורחים שכבר קיימים.`
-          : ''
-      );
-      await loadRecords();
-    } catch (err) {
-      console.error('❌ שגיאה בייבוא לשרת:', err);
-      setError('לא ניתן היה לייבא רשומות לשרת. הייבוא לא בוצע.');
-      // לא מציגים כאן את rows הגולמיים בטבלה - הם עלולים להגיע בלי id ולהקריס את הרשת
-    }
+    // אותה שיטת מזהה זמני כמו "הוסף שורה" בטבלה - שורות מיובאות עוד לא נשמרו בשרת
+    // אז אין להן hashCode, וצריך id ייחודי כלשהו כדי שה-DataGrid יוכל להציג אותן
+    const numericIds = records.map((r) => Number(r.id)).filter((n) => Number.isFinite(n));
+    let nextId = numericIds.length ? Math.max(...numericIds) + 1 : 1;
+    const rowsWithIds = importedRows.map((row) => ({ ...row, id: row.id ?? nextId++ }));
+
+    handleAutoSaveLocal([...rowsWithIds, ...records]);
+    setError('');
   };
 
   const handleLogout = () => {

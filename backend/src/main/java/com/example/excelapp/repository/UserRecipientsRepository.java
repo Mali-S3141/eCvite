@@ -18,4 +18,13 @@ public interface UserRecipientsRepository
     // נטען ב-SELECT נפרד משלו (N+1), מה שהפך טעינת נמענים למשתמש עם הרבה רשומות לאיטית מאוד
     @Query("SELECT ur FROM UserRecipients ur JOIN FETCH ur.recipient WHERE ur.user = :user")
     List<UserRecipients> findByUser(@Param("user") User user);
+
+    // מחזירה רק את מחרוזות ה-hash (לא את הישויות המלאות) - נמנעת מ-N+1 שאילתות
+    // שהיו קורות אם היינו טוענים כל recipient בנפרד (ManyToOne ברירת מחדל הוא eager)
+    @Query("SELECT ur.recipient.hashCode FROM UserRecipients ur WHERE ur.user = :user")
+    List<String> findRecipientHashCodesByUser(@Param("user") User user);
+
+    // רק שורות הקישור שבאמת רלוונטיות למחיקה (לפי hash) - במקום לטעון את כל
+    // הקישורים של המשתמש (כולל recipient מלא לכל אחד, eager) ולסנן בזיכרון
+    List<UserRecipients> findByUserAndRecipient_HashCodeIn(User user, List<String> hashCodes);
 }

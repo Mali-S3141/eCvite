@@ -5,6 +5,7 @@ import com.example.excelapp.entity.UserRecipients;
 import com.example.excelapp.entity.Recipients;
 import com.example.excelapp.repository.RecipientsRepository;
 import com.example.excelapp.dto.SaveRecipientsRequest;
+import com.example.excelapp.dto.DeleteRecipientsRequest;
 import com.example.excelapp.repository.UserRecipientsRepository;
 import com.example.excelapp.repository.UserRepository;
 import com.example.excelapp.service.ExcelService;
@@ -17,7 +18,11 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/api/recipients")
@@ -48,67 +53,59 @@ public class RecipientController {
     ) {
 
         User user = userRepository.findByPhone(request.getPhone());
-        System.out.println("SAVE RECIPIENTS START");
 
-        System.out.println(
-                "PHONE: " + request.getPhone()
-        );
+        System.out.println("SAVE RECIPIENTS START - PHONE: " + request.getPhone()
+                + " COUNT: " + request.getRecipients().size());
 
-        System.out.println(
-                "COUNT: " + request.getRecipients().size()
-        );
         if (user == null) {
             return ResponseEntity
                     .status(HttpStatus.NOT_FOUND)
                     .body("User not found");
         }
 
+        List<Recipients> incoming = request.getRecipients();
 
-        List<Recipients> savedRecipients = new ArrayList<>();
-
-
-        for (Recipients r : request.getRecipients()) {
-
-                System.out.println(
-                        "RECIPIENT: " +
-                                r.getMan() + " " +
-                                r.getLastName() +
-                                " HASH=" + r.getHashCode()
-                );
-
-            // יצירת hash אם חסר
+        // יצירת hash לכל שורה שחסר לה - בזיכרון, לא פונה ל-DB
+        for (Recipients r : incoming) {
             if (r.getHashCode() == null || r.getHashCode().isEmpty()) {
                 r.setHashCode(r.generateRowHashCode());
             }
-
-
-            // בדיקה האם הנמען כבר קיים
-            Recipients existing =
-                    recipientRepository.findById(r.getHashCode())
-                            .orElse(null);
-
-
-            if (existing != null) {
-
-                // כבר קיים - משתמשים בו
-                savedRecipients.add(existing);
-
-            } else {
-
-                // חדש - שומרים
-                Recipients saved =
-                        recipientRepository.save(r);
-
-                savedRecipients.add(saved);
-            }
         }
 
+        // שאילתה אחת שמביאה בבת אחת את כל הנמענים שכבר קיימים (לפי hash) - במקום
+        // שאילתה נפרדת לכל שורה בלולאה, שהייתה הופכת שמירה של רשימה גדולה (מאות
+        // שורות, למשל אחרי ייבוא אקסל) לאיטית מאוד (מאות round-trip-ים ל-Neon)
+        List<String> hashCodes = incoming.stream()
+                .map(Recipients::getHashCode)
+                .distinct()
+                .toList();
+        Map<String, Recipients> existingByHash = recipientRepository.findAllById(hashCodes).stream()
+                .collect(Collectors.toMap(Recipients::getHashCode, r -> r));
 
-        // יצירת מצביעים למשתמש
+        List<Recipients> toInsert = new ArrayList<>();
+        List<Recipients> savedRecipients = new ArrayList<>();
+        Set<String> seen = new HashSet<>();
+        for (Recipients r : incoming) {
+            if (!seen.add(r.getHashCode())) continue; // כפילות בתוך אותה בקשה
+            Recipients existing = existingByHash.get(r.getHashCode());
+            if (existing != null) {
+                savedRecipients.add(existing);
+            } else {
+                toInsert.add(r);
+            }
+        }
+        if (!toInsert.isEmpty()) {
+            savedRecipients.addAll(recipientRepository.saveAll(toInsert));
+        }
+
+        // שאילתה אחת שמביאה רק את ה-hash-ים הקיימים (לא את הישויות המלאות - זה היה
+        // גורם ל-N+1 שאילתות, אחת לכל recipient בנפרד, כי ManyToOne ברירת מחדל הוא eager)
+        Set<String> alreadyLinkedHashes = new HashSet<>(
+                userRecipientsRepository.findRecipientHashCodesByUser(user)
+        );
+
         List<UserRecipients> links = savedRecipients.stream()
-                .filter(recipient ->
-                        !userRecipientsRepository.existsByUserAndRecipient(user, recipient)
-                )
+                .filter(recipient -> !alreadyLinkedHashes.contains(recipient.getHashCode()))
                 .map(recipient -> {
 
                     UserRecipients link = new UserRecipients();
@@ -121,9 +118,11 @@ public class RecipientController {
                 })
                 .toList();
 
+        if (!links.isEmpty()) {
+            userRecipientsRepository.saveAll(links);
+        }
 
-        userRecipientsRepository.saveAll(links);
-        return null;
+        return ResponseEntity.ok().build();
     }
 
 
@@ -229,5 +228,34 @@ public class RecipientController {
         return ResponseEntity.ok(
                 savedRecipients
         );
+    }
+
+
+    @PostMapping("/delete")
+    public ResponseEntity<?> deleteRecipients(
+            @RequestBody DeleteRecipientsRequest request
+    ) {
+
+        User user = userRepository.findByPhone(request.getPhone());
+
+        if (user == null) {
+            return ResponseEntity
+                    .status(HttpStatus.NOT_FOUND)
+                    .body("User not found");
+        }
+
+        List<String> hashCodes = request.getHashCodes();
+
+        // מוחקים רק את הקישור (user_recipients) בין המשתמש הזה לנמענים שנבחרו -
+        // לא את שורת ה-Recipients עצמה, כי אותו hashCode (נגזר משם+טלפון) יכול
+        // להיות משותף/מקושר גם למשתמשים אחרים, ומחיקה ישירה הייתה מוחקת להם בטעות.
+        // שאילתה אחת ממוקדת (JOIN + IN) - לא טוענים את כל הקישורים של המשתמש
+        // (יכולים להיות מאות) רק כדי לסנן בזיכרון בשביל כמה שנבחרו למחיקה
+        List<UserRecipients> linksToDelete =
+                userRecipientsRepository.findByUserAndRecipient_HashCodeIn(user, hashCodes);
+
+        userRecipientsRepository.deleteAll(linksToDelete);
+
+        return ResponseEntity.ok().build();
     }
 }

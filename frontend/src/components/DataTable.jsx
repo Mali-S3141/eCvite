@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Box, Button, Paper, Stack, Typography, TextField, Chip, Menu, MenuItem, IconButton, Popper } from '@mui/material';
+import { Box,Button,Paper,Stack,Typography,TextField,Chip,Menu,MenuItem,IconButton,Popper,Dialog,DialogTitle,DialogContent,DialogContentText,DialogActions,} from '@mui/material';
 import SwapHorizIcon from '@mui/icons-material/SwapHoriz';
 import ArrowDropDownIcon from '@mui/icons-material/ArrowDropDown';
 import CloseIcon from '@mui/icons-material/Close';
@@ -67,6 +67,8 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
   const [fieldDefs, setFieldDefs] = useState([]);
 
   const [problemQueue, setProblemQueue] = useState([]); // תורי תאים שצריך לתקן לפני שמירה - {id, field}
+  const [pendingProblems, setPendingProblems] = useState([]); // תאים בעייתיים שממתינים להחלטה - לתקן או לשמור בכל זאת
+  const [saveAnywayDialogOpen, setSaveAnywayDialogOpen] = useState(false);
   const [contextMenu, setContextMenu] = useState(null); // { mouseX, mouseY, id, field } - קליק ימני על תא כתובת
   const [exportMenuAnchor, setExportMenuAnchor] = useState(null); // כפתור "יצוא" - תפריט הדפסת מדבקות / הורדת קובץ
   const [secondarySortFields, setSecondarySortFields] = useState([]); // תת-מיון: שרשרת עמודות לשבירת שוויון, לפי בחירת המשתמשת
@@ -166,14 +168,28 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
  const handleSaveClick = () => {
     const problems = findProblemCells(rows);
     if (problems.length > 0) {
-      // מנקים סינון/מיון כדי שכל השורות יהיו גלויות בסדר קבוע - כדי שאפשר יהיה לקפוץ ביניהן
-      setActiveFilters([]);
-      setInputValue('');
-      setSortModel([]);
-      setProblemQueue(problems);
+      // לא קופצים ישר לתיקון - שואלים קודם אם לשמור בכל זאת למרות השדות הבעייתיים
+      setPendingProblems(problems);
+      setSaveAnywayDialogOpen(true);
       return;
     }
     onSave(rows);
+  };
+
+  // "שמור בכל זאת" - מתעלמים מהשדות הבעייתיים ושומרים את הטבלה כמו שהיא
+  const handleSaveAnyway = () => {
+    setSaveAnywayDialogOpen(false);
+    onSave(rows);
+  };
+
+  // "לתקן עכשיו" - נכנסים לתהליך הקפיצה האוטומטית לתיקון השדות, כמו שהיה קודם
+  const handleFixProblemsNow = () => {
+    setSaveAnywayDialogOpen(false);
+    // מנקים סינון/מיון כדי שכל השורות יהיו גלויות בסדר קבוע - כדי שאפשר יהיה לקפוץ ביניהן
+    setActiveFilters([]);
+    setInputValue('');
+    setSortModel([]);
+    setProblemQueue(pendingProblems);
   };
 
   const handlePrintLabels = () => {
@@ -666,12 +682,14 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
 
     const colIndex = apiRef.current.getColumnIndex(target.field);
     apiRef.current.scrollToIndexes({ rowIndex, colIndex });
+    // 300ms ולא 50 - כדי לוודא שזה קורה אחרי שאנימציית הסגירה של הפופ-אפ ("שמור בכל
+    // זאת" / "לתקן עכשיו") מסתיימת לגמרי, אחרת הפופ-אפ "גונב" בחזרה את הפוקוס
     const timer = setTimeout(() => {
       const input = gridContainerRef.current?.querySelector(
         `[data-id="${target.id}"] [data-field="${target.field}"] input`
       );
       input?.focus();
-    }, 50);
+    }, 300);
     return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [problemQueue, filteredRows]);
@@ -1029,6 +1047,26 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
       >
         <MenuItem onClick={handleMoveToAddressNote}>העבר להערת כתובת</MenuItem>
       </Menu>
+
+      {/* disableRestoreFocus - בלי זה ה-Dialog "מחזיר" את הפוקוס לכפתור השמירה אחרי
+          שהוא נסגר, וזה מתנגש עם הקפיצה האוטומטית לתא הבעייתי שקורית באותו רגע בדיוק */}
+      <Dialog open={saveAnywayDialogOpen} onClose={handleFixProblemsNow} disableRestoreFocus>
+        <DialogTitle>יש שדות שגויים או חסרים</DialogTitle>
+        <DialogContent>
+          <DialogContentText>
+            נמצאו {pendingProblems.length} שדות שדורשים תיקון (חובה שריקים או ערכים לא תקינים).
+            אפשר לתקן אותם עכשיו, או לשמור בכל זאת כמו שהטבלה נמצאת עכשיו.
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleFixProblemsNow} color="primary">
+            לתקן עכשיו
+          </Button>
+          <Button onClick={handleSaveAnyway} color="error" variant="contained">
+            שמור בכל זאת
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Paper>
 
       {/* שורת בחירה - צפה מעל הכותרת, לא דוחפת את הטבלה למטה כשהיא נפתחת/נסגרת */}
