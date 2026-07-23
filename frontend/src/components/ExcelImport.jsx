@@ -1,5 +1,16 @@
 import { useState } from 'react';
-import { Button, Typography, Box } from '@mui/material';
+import {
+  Button,
+  Typography,
+  Box,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  Stack,
+  ToggleButton,
+  ToggleButtonGroup,
+} from '@mui/material';
 import * as XLSX from 'xlsx';
 
 import api from '../services/api';
@@ -80,11 +91,96 @@ function normalizePrintField(rows) {
   });
 }
 
+// ממלאת "שייך ל" = שם הגליון עבור שורות שמגיעות מגליונות שהמשתמשת אישרה, ורק כשהשדה
+// עדיין ריק (לא דורסת ערך אמיתי שכבר קיים בשורה עצמה מהקובץ)
+function applyBelongsToFromSheet(rows, rowSheetNames, confirmedSheets) {
+  if (!confirmedSheets || confirmedSheets.size === 0) return rows;
+  return rows.map((row, index) => {
+    const sheetName = rowSheetNames[index];
+    if (!confirmedSheets.has(sheetName)) return row;
+    if (String(row.belongsTo ?? '').trim()) return row;
+    return { ...row, belongsTo: sheetName };
+  });
+}
+
 export default function ExcelImport({ onImport }) {
   const [fileName, setFileName] = useState('');
   const [matchError, setMatchError] = useState('');
   const [pending, setPending] = useState(null);
+  const [belongsToPrompt, setBelongsToPrompt] = useState(null); // { matchingSheets, checked, resume }
   const [, setColumns] = useState([]);
+
+  // ממשיכה את זרימת הייבוא הרגילה (התאמת עמודות אוטומטית / מסך ידני) - עוטפת כל אחת
+  // מנקודות היציאה שלה (onImport) בהחלת "שייך ל" לפי הגליון, כדי שזה יחול תמיד,
+  // גם אם היה צריך גם מסך התאמת עמודות וגם את השאלה על "שייך ל".
+  // confirmedSheets === null אומר "עוד לא שאלנו" - אחרי שהמשתמשת עונה זה הופך ל-Set אמיתי
+  const runColumnMatching = async (json, rowSheetNames, headerLabels, confirmedSheets) => {
+    const finish = (rows) => onImport(applyBelongsToFromSheet(rows, rowSheetNames, confirmedSheets ?? new Set()));
+
+    try {
+      const loadedColumns = await getExcelColumns();
+      setColumns(loadedColumns);
+
+      // אם עוד לא שאלנו: שואלים תמיד, על כל גליון בקובץ (בלי קשר להתאמה לשום רשימה) -
+      // אם למלא "שייך ל" = שם הגליון לכל הנמענים שמגיעים ממנו
+      if (confirmedSheets === null) {
+        const uniqueSheetNames = [...new Set(rowSheetNames)];
+
+        if (uniqueSheetNames.length > 0) {
+          setBelongsToPrompt({
+            matchingSheets: uniqueSheetNames,
+            checked: new Set(), // ברירת מחדל: לא מסומן - זו החלטה מפורשת (כן/לא), לא הנחה אוטומטית
+            json,
+            rowSheetNames,
+            headerLabels,
+          });
+          return;
+        }
+      }
+
+      const seenHeaders = new Set();
+      const headers = [];
+      json.forEach((row) => {
+        Object.keys(row).forEach((header) => {
+          if (!seenHeaders.has(header)) {
+            seenHeaders.add(header);
+            headers.push(header);
+          }
+        });
+      });
+
+      const { matched, unmatched } = matchExcelHeaders(headers, loadedColumns);
+      const { matched: matchedByValues, unmatched: stillUnmatched } =
+          matchByValues(unmatched, json, loadedColumns);
+
+      Object.assign(matched, matchedByValues);
+
+      // עמודות שאין בהן שום נתון בקובץ בכלל - אין טעם לשאול עליהן, פשוט מדלגים
+      const unmatchedWithData = stillUnmatched.filter((header) =>
+        json.some((row) => String(row[header] ?? '').trim() !== '')
+      );
+
+      if (unmatchedWithData.length > 0) {
+        setPending({
+          json,
+          matched,
+          unmatchedHeaders: unmatchedWithData,
+          columns: loadedColumns,
+          headerLabels,
+          rowSheetNames,
+          confirmedSheets,
+        });
+        return;
+      }
+
+      const mappedRows = applyDefaultCountry(remapRows(json, matched));
+      finish(mappedRows);
+    } catch (err) {
+      console.error('לא ניתן היה לטעון את הגדרות השדות מהשרת:', err);
+      setMatchError('לא ניתן היה להתאים עמודות אוטומטית (השרת לא זמין) - הקובץ יובא כמו שהוא.');
+      finish(json);
+    }
+  };
 
   const handleFile = async (event) => {
     const file = event.target.files?.[0];
@@ -102,6 +198,7 @@ export default function ExcelImport({ onImport }) {
       const { trueOrder, labels, renameMap } = getHeaderInfo(sheet, name);
       const rawJson = XLSX.utils.sheet_to_json(sheet, { defval: '' });
       return {
+        sheetName: name,
         json: applyRenameMap(rawJson, renameMap),
         trueOrder,
         labels,
@@ -113,85 +210,35 @@ export default function ExcelImport({ onImport }) {
     sheetsData.forEach(({ labels }) => Object.assign(headerLabels, labels));
 
     const json = sheetsData.flatMap((s) => s.json);
+    // שם הגליון שממנו הגיעה כל שורה, באותו סדר בדיוק כמו json - כדי לדעת אחר כך (אחרי
+    // remapRows, ששומר על אותו סדר/כמות שורות) איזו שורה שייכת לאיזה גליון
+    const rowSheetNames = sheetsData.flatMap((s) => s.json.map(() => s.sheetName));
 
     if (json.length === 0) {
       onImport(json);
       return;
     }
 
-    try {
+    await runColumnMatching(json, rowSheetNames, headerLabels, null);
+  };
 
-      const loadedColumns = await getExcelColumns();
-      setColumns(loadedColumns);
+  const handleBelongsToConfirm = async () => {
+    const { json, rowSheetNames, headerLabels, checked } = belongsToPrompt;
+    setBelongsToPrompt(null);
+    await runColumnMatching(json, rowSheetNames, headerLabels, checked);
+  };
 
-      // בונים רשימת כותרות מאוחדת מכל הגליונות יחד (בלי כפילויות, לפי סדר הופעה),
-      // כדי שההתאמה תתייחס לכל הכותרות שבקובץ ולא רק לגליון הראשון
-      const seenHeaders = new Set();
-      const headers = [];
-      sheetsData.forEach(({ json: sheetJson, trueOrder }) => {
-        const sheetHeaders = Object.keys(sheetJson[0]).sort(
-          (a, b) => trueOrder.indexOf(a) - trueOrder.indexOf(b)
-        );
-        sheetHeaders.forEach((header) => {
-          if (!seenHeaders.has(header)) {
-            seenHeaders.add(header);
-            headers.push(header);
-          }
-        });
-      });
-
-      const { matched, unmatched } =
-          matchExcelHeaders(headers, loadedColumns);
-
-      const { matched: matchedByValues, unmatched: stillUnmatched } =
-          matchByValues(unmatched, json, loadedColumns);
-
-      Object.assign(matched, matchedByValues);
-
-      // עמודות שאין בהן שום נתון בקובץ בכלל - אין טעם לשאול עליהן, פשוט מדלגים
-      const unmatchedWithData = stillUnmatched.filter((header) =>
-        json.some((row) => String(row[header] ?? '').trim() !== '')
-      );
-
-      if (unmatchedWithData.length > 0) {
-
-        setPending({
-          json,
-          matched,
-          unmatchedHeaders: unmatchedWithData,
-          columns: loadedColumns,
-          headerLabels
-        });
-
-        return;
-      }
-
-      const mappedRows = applyDefaultCountry(
-          remapRows(json, matched)
-      );
-
-      console.log("שורות אחרי מיפוי:", mappedRows);
-      console.log("התאמת עמודות:", matched);
-
-      onImport({
-        rows: mappedRows,
-        columns: loadedColumns
-      });
-      onImport({
-        rows: applyDefaultCountry(remapRows(json, matched)),
-        columns: loadedColumns.filter(c => c.technicalName)
-      });
-
-
-    } catch (err) {
-      console.error('לא ניתן היה לטעון את הגדרות השדות מהשרת:', err);
-      setMatchError('לא ניתן היה להתאים עמודות אוטומטית (השרת לא זמין) - הקובץ יובא כמו שהוא.');
-      onImport(json);
-    }
+  const toggleBelongsToSheet = (sheetName, shouldFill) => {
+    setBelongsToPrompt((prev) => {
+      const checked = new Set(prev.checked);
+      if (shouldFill) checked.add(sheetName);
+      else checked.delete(sheetName);
+      return { ...prev, checked };
+    });
   };
 
   const handleDialogConfirm = async (choices) => {
-    const { json, matched, unmatchedHeaders, headerLabels } = pending;
+    const { json, matched, unmatchedHeaders, headerLabels, rowSheetNames, confirmedSheets } = pending;
     setPending(null);
 
     const finalMatched = { ...matched };
@@ -222,13 +269,15 @@ export default function ExcelImport({ onImport }) {
       invalidateExcelColumnsCache();
     }
 
-    onImport(normalizePrintField(applyDefaultCountry(remapRows(json, finalMatched))));
+    const mappedRows = normalizePrintField(applyDefaultCountry(remapRows(json, finalMatched)));
+    onImport(applyBelongsToFromSheet(mappedRows, rowSheetNames, confirmedSheets));
   };
 
   const handleDialogCancel = () => {
-    const { json, matched } = pending;
+    const { json, matched, rowSheetNames, confirmedSheets } = pending;
     setPending(null);
-    onImport(normalizePrintField(applyDefaultCountry(remapRows(json, matched))));
+    const mappedRows = normalizePrintField(applyDefaultCountry(remapRows(json, matched)));
+    onImport(applyBelongsToFromSheet(mappedRows, rowSheetNames, confirmedSheets));
   };
 
   return (
@@ -260,6 +309,48 @@ export default function ExcelImport({ onImport }) {
         <Typography color="error" variant="caption">
           {matchError}
         </Typography>
+      )}
+      {belongsToPrompt && (
+        <Dialog open onClose={handleBelongsToConfirm}>
+          <DialogTitle sx={{ pb: 1 }}>האם למלא את שדה "שייך ל" בשם הגליון?</DialogTitle>
+          <DialogContent>
+            <Stack spacing={1.5}>
+              {belongsToPrompt.matchingSheets.map((sheetName) => (
+                <Stack
+                  key={sheetName}
+                  direction="row"
+                  alignItems="center"
+                  justifyContent="space-between"
+                  sx={{ py: 0.5, borderBottom: '1px solid #f1f5f9' }}
+                >
+                  <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                    {sheetName}
+                  </Typography>
+                  <ToggleButtonGroup
+                    size="small"
+                    exclusive
+                    value={belongsToPrompt.checked.has(sheetName) ? 'yes' : 'no'}
+                    onChange={(event, value) => {
+                      if (value) toggleBelongsToSheet(sheetName, value === 'yes');
+                    }}
+                  >
+                    <ToggleButton value="yes" sx={{ textTransform: 'none', px: 2 }}>
+                      כן
+                    </ToggleButton>
+                    <ToggleButton value="no" sx={{ textTransform: 'none', px: 2 }}>
+                      לא
+                    </ToggleButton>
+                  </ToggleButtonGroup>
+                </Stack>
+              ))}
+            </Stack>
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={handleBelongsToConfirm} variant="contained">
+              המשך
+            </Button>
+          </DialogActions>
+        </Dialog>
       )}
       {pending && (
         <ColumnMatchDialog
