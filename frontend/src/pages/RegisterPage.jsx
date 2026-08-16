@@ -10,17 +10,12 @@ import {
     Typography,
 } from "@mui/material";
 import api from "../services/api";
-import { Alert } from "@mui/material";
 export default function RegisterPage() {
 
     const navigate = useNavigate();
     const location = useLocation();
 
     const [emailError, setEmailError] = useState(false);
-    const [codeSent, setCodeSent] = useState(false);
-    const [verificationCode, setVerificationCode] = useState("");
-    const [emailVerified, setEmailVerified] = useState(false);
-    const [message, setMessage] = useState("");
     const [phoneError, setPhoneError] = useState(false);
     const [agreeTerms, setAgreeTerms] = useState(false);
     const [termsError, setTermsError] = useState("");
@@ -36,7 +31,7 @@ export default function RegisterPage() {
         houseNumber: "",
     });
 
-
+    const phoneRegex = /^(05\d{8}|0[23489]\d{7})$/;
     const handleChange = (e) => {
         const { name, value } = e.target;
 
@@ -50,45 +45,12 @@ export default function RegisterPage() {
             setEmailError(value !== "" && !gmailRegex.test(value));
         }
         if (name === "phone") {
-            const phoneRegex = /^\d{10}$/;
             setPhoneError(value !== "" && !phoneRegex.test(value));
         }
     };
 
-    const handleSendCode = async () => {
-
-        const gmailRegex = /^[a-zA-Z0-9._%+-]+@gmail\.com$/;
-
-        if (!gmailRegex.test(user.email)) {
-            setEmailError(true);
-            return;
-        }
-
-        try {
-            await api.sendVerificationCode(user.email);
-            setCodeSent(true);
-            setMessage("קוד האימות נשלח למייל");
-        } catch (err) {
-            alert("שגיאה בשליחת קוד האימות");
-        }
-    };
-    const handleVerifyCode = async () => {
-        try {
-            await api.verifyCode(
-                user.email,
-                verificationCode
-            );
-
-            setEmailVerified(true);
-            setMessage("המייל אומת בהצלחה");
-
-        } catch (err) {
-            setMessage("קוד שגוי או שפג התוקף");
-        }
-    };
     const handleRegister = async (e) => {
         e.preventDefault();
-        const phoneRegex = /^\d{10}$/;
 
         if (!phoneRegex.test(user.phone)) {
             setPhoneError(true);
@@ -98,7 +60,9 @@ export default function RegisterPage() {
             setTermsError("יש לאשר את תנאי השירות לפני ההרשמה");
             return;
         }
+
         setTermsError("");
+
         const gmailRegex = /^[a-zA-Z0-9._%+-]+@gmail\.com$/;
 
         if (!gmailRegex.test(user.email)) {
@@ -124,13 +88,6 @@ export default function RegisterPage() {
                     הרשמה למערכת
                 </Typography>
 
-                {message && (
-                    <Alert severity={emailVerified ? "success" : "info"}>
-                        {message}
-                    </Alert>
-                )}
-
-
                 <Box
                     component="form"
                     onSubmit={handleRegister}
@@ -144,6 +101,7 @@ export default function RegisterPage() {
                         name="firstNameWoman"
                         value={user.firstNameWoman}
                         required
+
                         onChange={handleChange}
                     />
 
@@ -154,7 +112,6 @@ export default function RegisterPage() {
                         required
                         onChange={handleChange}
                     />
-
                     <TextField
                         label="פלאפון"
                         name="phone"
@@ -162,7 +119,7 @@ export default function RegisterPage() {
                         onChange={handleChange}
                         required
                         error={phoneError}
-                        helperText={phoneError ? "מספר הטלפון חייב להכיל 10 ספרות" : ""}
+                        helperText={phoneError ? "מספר טלפון לא תקין" : ""}
                     />
 
                     <TextField
@@ -174,27 +131,6 @@ export default function RegisterPage() {
                         error={emailError}
                         helperText={emailError ? "המייל שהוזן אינו תקין" : ""}
                     />
-                    <Button
-                        variant="outlined"
-                        onClick={handleSendCode}
-                    >
-                        שלח קוד אימות
-                    </Button>
-                    {codeSent && (
-                        <TextField
-                            label="קוד אימות"
-                            value={verificationCode}
-                            onChange={(e) => setVerificationCode(e.target.value)}
-                        />
-                    )}
-                    {codeSent && (
-                        <Button
-                            variant="outlined"
-                            onClick={handleVerifyCode}
-                        >
-                            אמת קוד
-                        </Button>
-                    )}
                     <TextField
                         select
                         label="עבור איזה שמחה?"
@@ -210,8 +146,8 @@ export default function RegisterPage() {
                     <TextField
                         label="עיר"
                         name="city"
-                        value={user.city}
                         required
+                        value={user.city}
                         onChange={handleChange}
                     />
 
@@ -226,11 +162,11 @@ export default function RegisterPage() {
                     <TextField
                         label="מספר בית"
                         name="houseNumber"
+
                         value={user.houseNumber}
                         required
                         onChange={handleChange}
                     />
-
                     <div>
                         <input
                             type="checkbox"
@@ -240,17 +176,20 @@ export default function RegisterPage() {
                                 setTermsError("");
                             }}
                         />
+
                         <span>
-                            {" "}אני מאשר/ת את{" "}
-                            <a href="/terms">תנאי השירות</a>
-                        </span>
+    אני מאשר/ת את{" "}
+                            <a href="/terms">
+      תנאי השירות
+    </a>
+  </span>
+
                         {termsError && (
                             <div style={{ color: "red", marginTop: "8px" }}>
                                 {termsError}
                             </div>
                         )}
                     </div>
-
                     <Button
                         type="submit"
                         variant="contained"
