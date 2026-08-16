@@ -10,17 +10,12 @@ import {
     Typography,
 } from "@mui/material";
 import api from "../services/api";
-import { Alert } from "@mui/material";
 export default function RegisterPage() {
 
     const navigate = useNavigate();
     const location = useLocation();
 
     const [emailError, setEmailError] = useState(false);
-    const [codeSent, setCodeSent] = useState(false);
-    const [verificationCode, setVerificationCode] = useState("");
-    const [emailVerified, setEmailVerified] = useState(false);
-    const [message, setMessage] = useState("");
     const [phoneError, setPhoneError] = useState(false);
     const [agreeTerms, setAgreeTerms] = useState(false);
     const [termsError, setTermsError] = useState("");
@@ -54,37 +49,6 @@ export default function RegisterPage() {
         }
     };
 
-    const handleSendCode = async () => {
-
-        const gmailRegex = /^[a-zA-Z0-9._%+-]+@gmail\.com$/;
-
-        if (!gmailRegex.test(user.email)) {
-            setEmailError(true);
-            return;
-        }
-
-        try {
-            await api.sendVerificationCode(user.email);
-            setCodeSent(true);
-            setMessage("קוד האימות נשלח למייל");
-        } catch (err) {
-            alert("שגיאה בשליחת קוד האימות");
-        }
-    };
-    const handleVerifyCode = async () => {
-        try {
-            await api.verifyCode(
-                user.email,
-                verificationCode
-            );
-
-            setEmailVerified(true);
-            setMessage("המייל אומת בהצלחה");
-
-        } catch (err) {
-            setMessage("קוד שגוי או שפג התוקף");
-        }
-    };
     const handleRegister = async (e) => {
         e.preventDefault();
 
@@ -123,13 +87,6 @@ export default function RegisterPage() {
                 <Typography variant="h5" align="center" gutterBottom>
                     הרשמה למערכת
                 </Typography>
-
-                {message && (
-                    <Alert severity={emailVerified ? "success" : "info"}>
-                        {message}
-                    </Alert>
-                )}
-
 
                 <Box
                     component="form"
@@ -174,27 +131,6 @@ export default function RegisterPage() {
                         error={emailError}
                         helperText={emailError ? "המייל שהוזן אינו תקין" : ""}
                     />
-                    {/*<Button*/}
-                    {/*    variant="outlined"*/}
-                    {/*    onClick={handleSendCode}*/}
-                    {/*>*/}
-                    {/*    שלח קוד אימות*/}
-                    {/*</Button>*/}
-                    {/*{codeSent && (*/}
-                    {/*    <TextField*/}
-                    {/*        label="קוד אימות"*/}
-                    {/*        value={verificationCode}*/}
-                    {/*        onChange={(e) => setVerificationCode(e.target.value)}*/}
-                    {/*    />*/}
-                    {/*)}*/}
-                    {/*{codeSent && (*/}
-                    {/*    <Button*/}
-                    {/*        variant="outlined"*/}
-                    {/*        onClick={handleVerifyCode}*/}
-                    {/*    >*/}
-                    {/*        אמת קוד*/}
-                    {/*    </Button>*/}
-                    {/*)}*/}
                     <TextField
                         select
                         label="עבור איזה שמחה?"
@@ -212,7 +148,6 @@ export default function RegisterPage() {
                         name="city"
                         required
                         value={user.city}
-                        required
                         onChange={handleChange}
                     />
 
