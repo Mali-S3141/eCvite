@@ -37,8 +37,8 @@ const api = {
             phone: phone,
             recipients: rows
         }),
-  deleteRecipients: (ids) =>
-      apiClient.post('/recipients/delete', { ids }),
+  deleteRecipients: (phone, hashCodes) =>
+      apiClient.post('/recipients/delete', { phone, hashCodes }),
 
   importRecipients: (phone, recipients) =>
       apiClient.post('/recipients/import', { phone, recipients }),
