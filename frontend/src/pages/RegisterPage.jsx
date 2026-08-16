@@ -50,7 +50,6 @@ export default function RegisterPage() {
             setEmailError(value !== "" && !gmailRegex.test(value));
         }
         if (name === "phone") {
-            const phoneRegex = /^(05\d{8}|0[23489]\d{7})$/;
             setPhoneError(value !== "" && !phoneRegex.test(value));
         }
     };
@@ -88,7 +87,6 @@ export default function RegisterPage() {
     };
     const handleRegister = async (e) => {
         e.preventDefault();
-        const phoneRegex = /^\d{10}$/;
 
         if (!phoneRegex.test(user.phone)) {
             setPhoneError(true);

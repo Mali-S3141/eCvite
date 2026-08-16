@@ -24,7 +24,7 @@ function App() {
             element={loggedIn ? <PrintPreviewPage /> : <Navigate to="/login" replace />}
         />
         <Route path="/terms" element={<Terms />} />
-      <Route path="*" element={<Navigate to={loggedIn ? '/dashboard' : '/login'} replace />} />
+      <Route path="*" element={<Navigate to={loggedIn ? '/' : '/login'} replace />} />
 
     </Routes>
   );
