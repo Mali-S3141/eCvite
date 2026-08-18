@@ -72,7 +72,7 @@ export default function RegisterPage() {
 
         try {
             const response = await api.register(user);
-            localStorage.setItem('user', JSON.stringify(response.data));
+            sessionStorage.setItem('user', JSON.stringify(response.data));
             navigate("/");
         } catch (err) {
             alert("ההרשמה נכשלה");

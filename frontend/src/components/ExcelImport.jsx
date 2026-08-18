@@ -16,6 +16,7 @@ import * as XLSX from 'xlsx';
 import api from '../services/api';
 import { getExcelColumns, invalidateExcelColumnsCache } from '../services/excelColumnsCache';
 import { matchExcelHeaders, matchByValues, remapRows } from '../utils/excelColumnMatcher';
+import { buildIdentityKey, mergeBelongsToValues } from '../utils/recipientIdentity';
 import ColumnMatchDialog, { IGNORE_VALUE } from './ColumnMatchDialog';
 
 // הופכת אינדקס עמודה (0,1,2...) לאות עמודה כמו באקסל (A, B, ... Z, AA, AB...)
@@ -103,6 +104,27 @@ function applyBelongsToFromSheet(rows, rowSheetNames, confirmedSheets) {
   });
 }
 
+// כשאותו נמען (לפי buildIdentityKey) מופיע כמה פעמים באותו ייבוא - למשל בשני גליונות
+// שונים באותו קובץ - ממזגים לשורה אחת, עם כל ערכי "שייך ל" מכל המופעים ביחד, במקום
+// ליצור שתי שורות נפרדות לאותו אדם בפועל. שורות ללא שום פרט זהות (כל השדות ריקים)
+// לא ממוזגות זו עם זו - כל אחת נשארת שורה נפרדת משלה
+function mergeDuplicateIdentities(rows) {
+  const map = new Map();
+  const order = [];
+  rows.forEach((row, index) => {
+    const key = buildIdentityKey(row);
+    const mapKey = key.replace(/\|/g, '') === '' ? `__blank__${index}` : key;
+    if (!map.has(mapKey)) {
+      map.set(mapKey, { ...row });
+      order.push(mapKey);
+    } else {
+      const existing = map.get(mapKey);
+      existing.belongsTo = mergeBelongsToValues(existing.belongsTo, row.belongsTo);
+    }
+  });
+  return order.map((mapKey) => map.get(mapKey));
+}
+
 export default function ExcelImport({ onImport }) {
   const [fileName, setFileName] = useState('');
   const [matchError, setMatchError] = useState('');
@@ -115,7 +137,8 @@ export default function ExcelImport({ onImport }) {
   // גם אם היה צריך גם מסך התאמת עמודות וגם את השאלה על "שייך ל".
   // confirmedSheets === null אומר "עוד לא שאלנו" - אחרי שהמשתמשת עונה זה הופך ל-Set אמיתי
   const runColumnMatching = async (json, rowSheetNames, headerLabels, confirmedSheets) => {
-    const finish = (rows) => onImport(applyBelongsToFromSheet(rows, rowSheetNames, confirmedSheets ?? new Set()));
+    const finish = (rows) =>
+      onImport(mergeDuplicateIdentities(applyBelongsToFromSheet(rows, rowSheetNames, confirmedSheets ?? new Set())));
 
     try {
       const loadedColumns = await getExcelColumns();
@@ -270,14 +293,14 @@ export default function ExcelImport({ onImport }) {
     }
 
     const mappedRows = normalizePrintField(applyDefaultCountry(remapRows(json, finalMatched)));
-    onImport(applyBelongsToFromSheet(mappedRows, rowSheetNames, confirmedSheets));
+    onImport(mergeDuplicateIdentities(applyBelongsToFromSheet(mappedRows, rowSheetNames, confirmedSheets)));
   };
 
   const handleDialogCancel = () => {
     const { json, matched, rowSheetNames, confirmedSheets } = pending;
     setPending(null);
     const mappedRows = normalizePrintField(applyDefaultCountry(remapRows(json, matched)));
-    onImport(applyBelongsToFromSheet(mappedRows, rowSheetNames, confirmedSheets));
+    onImport(mergeDuplicateIdentities(applyBelongsToFromSheet(mappedRows, rowSheetNames, confirmedSheets)));
   };
 
   return (

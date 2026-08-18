@@ -8,7 +8,7 @@ function App() {
 
   // useLocation גורם ל-App להתעדכן בכל ניווט, כדי ש-loggedIn ייבדק מחדש אחרי login/logout
   useLocation();
-  const loggedIn = Boolean(localStorage.getItem('user'));
+  const loggedIn = Boolean(sessionStorage.getItem('user'));
 
   return (
     <Routes>

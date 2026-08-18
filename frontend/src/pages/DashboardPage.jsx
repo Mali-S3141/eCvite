@@ -3,11 +3,12 @@ import { Box, Button, Typography } from '@mui/material';
 import DataTable from '../components/DataTable';
 import api from '../services/api';
 import PrintModal from '../components/PrintModal'; // ייבוא המודאל החדש
+import { buildIdentityKey, mergeBelongsToValues } from '../utils/recipientIdentity';
 
 
 
 function getLoggedUser() {
-  const raw = localStorage.getItem('user');
+  const raw = sessionStorage.getItem('user');
   return raw ? JSON.parse(raw) : null;
 }
 
@@ -125,10 +126,27 @@ export default function DashboardPage() {
     }
 
     try {
+      // מוחקים בשרת קודם, לפני השמירה - לא אחריה. אם המחיקה הייתה רצה אחרי השמירה,
+      // נמען שנמחק ואז יובא/נוסף מחדש עם אותה זהות (שם+טלפון+כתובת) היה מקבל hash
+      // זהה לנמען הישן שעדיין מקושר אליך באותו רגע (המחיקה עוד לא רצה) - והמחיקה
+      // שרצה רק אחר כך הייתה מנתקת בטעות גם את מה שכרגע נשמר
+      if (pendingDeleteHashCodes.length > 0) {
+        try {
+          await api.deleteRecipients(user.phone, pendingDeleteHashCodes);
+          setPendingDeleteHashCodes([]);
+        } catch (deleteErr) {
+          console.error('❌ שגיאה במחיקה מהבקאנד:', deleteErr);
+          setError('לא ניתן היה למחוק חלק מהשורות מהשרת.');
+        }
+      }
+
       console.log("2. שולח לבקאנד:", updatedRows);
 
+      // hashCode כן נשלח (רק id המקומי-לתצוגה מוסר) - שורה עם hashCode היא נמען שכבר
+      // קיים בשרת, ומזהה אותו במפורש בשביל עדכון; רק שורה חדשה לגמרי (בלי hashCode,
+      // כמו מ"הוסף שורה") תיבדק ותקבל hash חדש בצד השרת
       const cleanRows = updatedRows.map(
-          ({ id, hashCode, ...rest }) => rest
+          ({ id, ...rest }) => rest
       );
 
       console.log("2. שולח לבקאנד אחרי ניקוי:", cleanRows);
@@ -147,21 +165,6 @@ export default function DashboardPage() {
 
 
       console.log("3. נשמר בהצלחה!", response.data);
-
-      // מוחקים בפועל מהשרת רק עכשיו, אחרי שהשמירה הצליחה - יחד עם שאר השינויים,
-      // לא ברגע שלוחצים על כפתור המחיקה בטבלה
-      if (pendingDeleteHashCodes.length > 0) {
-        try {
-          await api.deleteRecipients(user.phone, pendingDeleteHashCodes);
-          setPendingDeleteHashCodes([]);
-        } catch (deleteErr) {
-          console.error('❌ שגיאה במחיקה מהבקאנד:', deleteErr);
-          setError('השמירה הצליחה, אבל לא ניתן היה למחוק חלק מהשורות מהשרת.');
-        }
-      }
-
-
-
 
      setIsTableDirty(false);
 
@@ -188,18 +191,46 @@ export default function DashboardPage() {
     const importedRows = Array.isArray(rows) ? rows : rows?.rows ?? [];
     if (!importedRows.length || !user?.phone) return;
 
-    // אותה שיטת מזהה זמני כמו "הוסף שורה" בטבלה - שורות מיובאות עוד לא נשמרו בשרת
-    // אז אין להן hashCode, וצריך id ייחודי כלשהו כדי שה-DataGrid יוכל להציג אותן
+    // ממזגים כל שורה שמיובאת מול מה שכבר יושב בטבלה (לא רק בין גליונות של אותו קובץ -
+    // זה כבר טופל ב-ExcelImport - אלא גם מול נמענים שכבר קיימים מייבוא/שמירה קודמים).
+    // כך שאם נמען כבר קיים ומיובא שוב עם "שייך ל" אחר, זה מתמזג מיד ויזואלית בטבלה,
+    // לא רק אחרי לחיצה על "שמור" - אותו כלל בדיוק שרץ בשרת (belongsTo מצטבר, שאר
+    // השדות "העדכני מנצח"), כדי שמה שרואים כאן יתאים בדיוק למה שבאמת יישמר
+    const importedByIdentity = new Map();
+    importedRows.forEach((row) => {
+      const key = buildIdentityKey(row);
+      if (key.replace(/\|/g, '') === '') return; // שורות בלי שום פרט זהות לא ממוזגות
+      importedByIdentity.set(key, row);
+    });
+
+    const mergedRecords = records.map((row) => {
+      const key = buildIdentityKey(row);
+      const importedMatch = key.replace(/\|/g, '') !== '' ? importedByIdentity.get(key) : null;
+      if (!importedMatch) return row;
+      importedByIdentity.delete(key); // נוצל - לא ייווצר בשבילו גם שורה חדשה נפרדת
+      return {
+        ...row,
+        ...importedMatch,
+        id: row.id,
+        hashCode: row.hashCode,
+        belongsTo: mergeBelongsToValues(row.belongsTo, importedMatch.belongsTo),
+      };
+    });
+
+    // אותה שיטת מזהה זמני כמו "הוסף שורה" בטבלה - שורות שבאמת חדשות (לא התמזגו לתוך
+    // שורה קיימת למעלה) עוד לא נשמרו בשרת, אז אין להן hashCode
     const numericIds = records.map((r) => Number(r.id)).filter((n) => Number.isFinite(n));
     let nextId = numericIds.length ? Math.max(...numericIds) + 1 : 1;
-    const rowsWithIds = importedRows.map((row) => ({ ...row, id: row.id ?? nextId++ }));
+    const blankIdentityRows = importedRows.filter((row) => buildIdentityKey(row).replace(/\|/g, '') === '');
+    const trulyNewRows = [...importedByIdentity.values(), ...blankIdentityRows];
+    const rowsWithIds = trulyNewRows.map((row) => ({ ...row, id: row.id ?? nextId++ }));
 
-    handleAutoSaveLocal([...rowsWithIds, ...records]);
+    handleAutoSaveLocal([...rowsWithIds, ...mergedRecords]);
     setError('');
   };
 
   const handleLogout = () => {
-    localStorage.removeItem('user');
+    sessionStorage.removeItem('user');
     window.location.href = '/login';
   };
   const getGreeting = () => {
@@ -216,7 +247,7 @@ export default function DashboardPage() {
     return 'ערב טוב';
   };
   return (
-      <Box sx={{ width: '100%', px: 2, pt: 0.5, pb: 1 }}>
+      <Box sx={{ width: '100%', height: '100vh', px: 2, pt: 0.5, pb: 1, display: 'flex', flexDirection: 'column' }}>
 
 
 
@@ -226,7 +257,6 @@ export default function DashboardPage() {
               fontWeight: 700,
               color: '#1e3a8a',
               textAlign: 'right',
-              transform: 'translateY(-30px)',
             }}
         >
 
@@ -253,17 +283,19 @@ export default function DashboardPage() {
             </Typography>
         )}
 
-        <DataTable
-            records={records}
-            loading={loading}
-            onSave={handleSave}
-            onAutoSave={handleAutoSaveLocal}
-            onSelectionChange={setSelectedRows}
-            onDeleteRows={handleDeleteRows}
-            initialSelectedIds={initialSelectedIds}
-            onImport={handleImport}
-            onOpenPrint={() => setIsPrintModalOpen(true)}
-        />
+        <Box sx={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+          <DataTable
+              records={records}
+              loading={loading}
+              onSave={handleSave}
+              onAutoSave={handleAutoSaveLocal}
+              onSelectionChange={setSelectedRows}
+              onDeleteRows={handleDeleteRows}
+              initialSelectedIds={initialSelectedIds}
+              onImport={handleImport}
+              onOpenPrint={() => setIsPrintModalOpen(true)}
+          />
+        </Box>
 
         {/* רנדור המודאל והעברת הרשומות המסומנות אליו */}
         <PrintModal

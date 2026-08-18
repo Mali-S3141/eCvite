@@ -28,7 +28,7 @@ export default function LoginPage() {
     try {
       const response = await api.login({ name, phone });
 
-      localStorage.setItem('user', JSON.stringify(response.data));
+      sessionStorage.setItem('user', JSON.stringify(response.data));
 
       navigate('/');
     } catch (err) {

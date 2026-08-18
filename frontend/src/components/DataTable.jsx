@@ -82,6 +82,16 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
     rowsRef.current = rows;
   }, [rows]);
   const gridContainerRef = useRef(null);
+  // דגל שמסמן שהיציאה מהשדה (blur) הבאה נגרמה ע"י Enter (ולא ע"י לחיצת עכבר על שדה
+  // אחר) - נקבע ממש לפני ה-blur() היזום, ונקרא/מתאפס ב-handleFocusOut. רק Enter אמור
+  // לגרום לקפיצה האוטומטית לתיקון הבא; לחיצת עכבר על שדה אחר צריכה לתת לערוך אותו
+  // בשקט, גם אם זה בטעות פותר תא תיקון קודם
+  const blurredViaEnterRef = useRef(false);
+  const suppressNextJumpRef = useRef(false);
+  const problemQueueRef = useRef(problemQueue);
+  useEffect(() => {
+    problemQueueRef.current = problemQueue;
+  }, [problemQueue]);
 
   // ל-DataGrid (בגרסה הזו) אין prop מובנה של onCellContextMenu - לכן מאזינים ישירות
   // לאירוע contextmenu הטבעי של הדפדפן על הקונטיינר, ומזהים את התא/שורה לפי data-field/data-id
@@ -234,7 +244,11 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
     };
     setRows((prevRows) => [newRow, ...prevRows]);
 
-
+    // גוללים לשורה החדשה (תמיד נוספת בראש הרשימה) - אם המשתמשת גוללה למטה בטבלה
+    // לפני שהוסיפה שורה, שלא תצטרך לחפש ידנית איפה היא נוספה
+    setTimeout(() => {
+      apiRef.current?.scrollToIndexes({ rowIndex: 0, colIndex: 0 });
+    }, 0);
   };
 
   const handleDeleteRows = () => {
@@ -272,7 +286,21 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
     );
     setRows(updatedRows);
     onAutoSave(updatedRows);
-  }, [onAutoSave]);
+
+    // עדכון הצביעה האדומה על "בעל"/"אישה" תלוי בערך של השדה השני באותה שורה
+    // (חובה זוגית - ראו isRequiredEmpty), אז כשמקלידים באחד מהם צריך שגם התא השני
+    // "יתעורר" ויבדוק את עצמו מיד, בלי לחכות ל-blur - updateRows מודיע ל-DataGrid
+    // במפורש על השורה המעודכנת, בניגוד להסתמכות בלבד על שינוי ה-prop rows. בכוונה
+    // *לא* מוציאים כאן משהו מתור התיקונים (problemQueue) - זה עדיין קורה רק ב-blur
+    // (handleFocusOut), אחרת כל הקשה בודדת הייתה מפעילה את אפקט "הקפיצה לבעיה הבאה"
+    // וגונבת את הפוקוס מהשדה תוך כדי שעדיין מקלידים בו
+    if (field === 'man' || field === 'woman') {
+      const updatedRow = updatedRows.find((row) => String(row.id) === String(id));
+      if (updatedRow && apiRef.current?.updateRows) {
+        apiRef.current.updateRows([updatedRow]);
+      }
+    }
+  }, [onAutoSave, apiRef]);
 
   // מעבירה את הערך מתא בעמודת כתובת (כשהוא לא מתאים) לעמודת "הערת כתובת" -
   // ומרוקנת את התא המקורי. אם כבר יש תוכן בהערת הכתובת, משרשרת אליו במקום לדרוס
@@ -329,6 +357,7 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
             if (event.key === 'Enter') {
               event.preventDefault();
               event.stopPropagation();
+              blurredViaEnterRef.current = true;
               event.currentTarget.blur();
             }
           }}
@@ -373,7 +402,21 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
       const { id, field, value } = params;
       const [menuOpen, setMenuOpen] = useState(false);
       const [menuOptions, setMenuOptions] = useState([]);
+      const [expanded, setExpanded] = useState(false); // "שייך ל" עם כמה ערכים - הוצג במלואו ביוזמת המשתמשת
+      const [isFocused, setIsFocused] = useState(false); // האם נמצאים בעריכה בפועל (לא רק "הצצה")
       const boxRef = useRef(null);
+
+      // "שייך ל" יכול להכיל כמה ערכים מופרדים בפסיק (למשל נמען ששייך גם ל"עבודה"
+      // וגם ל"שכנים") - כשזה ארוך, מציגים רק את הערך הראשון + תגית "+N", ורק לחיצה
+      // על התגית (או כניסה לעריכה) חושפת את הכל. זה ויזואלי בלבד - הערך עצמו בתא
+      // (ולכן גם החיפוש, שמסתמך עליו) לא משתנה כלל. "הצצה" (לחיצה על "+N" בלי להיכנס
+      // בפועל לעריכה) לא סוגרת את עצמה לבד ב-blur (כי הפוקוס אף פעם לא עבר ל-input) -
+      // לכן יש לה תגית "כווץ" נפרדת לחזרה מפורשת, בעוד שיציאה מעריכה אמיתית עדיין
+      // מכווצת אוטומטית
+      const valueParts = String(value ?? '').split(',').map((s) => s.trim()).filter(Boolean);
+      const isMultiValue = field === 'belongsTo' && valueParts.length > 1;
+      const showCollapsed = isMultiValue && !expanded;
+      const showExpandedPeek = isMultiValue && expanded && !isFocused;
 
       // בכוונה בלי MUI Menu כאן - ל-Menu יש "backdrop" בלתי נראה שמכסה את כל הדף
       // (כדי לזהות קליק-מחוץ-לתפריט) והוא תופס את הקליק השני של דאבל-קליק על אותו
@@ -394,23 +437,48 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
       };
       const closeMenu = () => setMenuOpen(false);
 
+      // מסננת את הרשימה תוך כדי הקלדה - רק ערכים שמתחילים במה שכבר הוקלד, כדי
+      // שאפשר יהיה גם להקליד חופשי וגם לראות מיד אילו ערכים קיימים תואמים
+      const typed = String(value ?? '').trim();
+      const filteredOptions = typed
+        ? menuOptions.filter((option) => option.startsWith(typed))
+        : menuOptions;
+
       return (
-        <Box ref={boxRef} sx={{ display: 'flex', alignItems: 'center', width: '100%', height: '100%', px: 1 }}>
+        <Box ref={boxRef} sx={{ display: 'flex', alignItems: 'center', width: '100%', height: '100%', px: 1, position: 'relative' }}>
           <input
             value={value ?? ''}
             onChange={(event) => updateCellValue(id, field, event.target.value)}
             onClick={(event) => event.stopPropagation()}
-            // בלי זה ה-DataGrid תופס את מקש הרווח כקיצור מקלדת שלו (למשל גלילה/בחירה)
-            // במקום לתת לו סתם להקליד תו רווח רגיל בתוך השדה
+            // בלי stopPropagation כאן ה-DataGrid תופס את מקש הרווח כקיצור מקלדת שלו
+            // (למשל גלילה/בחירה) במקום לתת לו סתם להקליד תו רווח רגיל בתוך השדה.
+            // Enter מבצע blur על השדה - זה מפעיל את בדיקת ה-focusout הקיימת, שאם השדה
+            // תקין מסירה אותו מתור התיקונים וקופצת אוטומטית לתא הבעייתי הבא
             onKeyDown={(event) => {
-              if (event.key === ' ') event.stopPropagation();
+              if (event.key === ' ') {
+                event.stopPropagation();
+                return;
+              }
+              if (event.key === 'Enter') {
+                event.preventDefault();
+                event.stopPropagation();
+                blurredViaEnterRef.current = true;
+                event.currentTarget.blur();
+              }
             }}
             // לחיצה/כניסה לתא בעמודות הבחירה פותחת את רשימת הערכים הקיימים, בלי צורך
-            // ללחוץ בנפרד על חץ - אפשר עדיין להקליד חופשי במקביל
+            // ללחוץ בנפרד על חץ - אפשר עדיין להקליד חופשי במקביל. כניסה לעריכה תמיד
+            // חושפת את הטקסט המלא (גם אם "שייך ל" מכווץ כרגע), ויציאה ממנה מכווצת שוב
             onFocus={() => {
+              setIsFocused(true);
+              setExpanded(true);
               if (pickListField) openMenu();
             }}
-            onBlur={closeMenu}
+            onBlur={() => {
+              setIsFocused(false);
+              setExpanded(false);
+              closeMenu();
+            }}
             style={{
               flex: 1,
               minWidth: 0,
@@ -419,8 +487,63 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
               height: '100%',
               font: 'inherit',
               background: 'transparent',
+              opacity: showCollapsed ? 0 : 1,
+              // בהצצה (showExpandedPeek) יש תגית "כווץ" צפה מעל התא - משאירים לה מקום
+              // פנוי מהטקסט כדי שלא תכסה חלק מהתוכן
+              paddingInlineEnd: showExpandedPeek ? 40 : 0,
             }}
           />
+          {showCollapsed && (
+            <Box
+              onClick={() => boxRef.current?.querySelector('input')?.focus()}
+              sx={{
+                position: 'absolute',
+                inset: 0,
+                display: 'flex',
+                alignItems: 'center',
+                px: 1,
+                gap: 0.5,
+                cursor: 'text',
+              }}
+            >
+              <Typography variant="body2" noWrap sx={{ flex: 1, minWidth: 0 }}>
+                {valueParts[0]}
+              </Typography>
+              <Chip
+                size="small"
+                label={`+${valueParts.length - 1}`}
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  setExpanded(true);
+                }}
+                sx={{ height: 20, fontSize: '0.7rem', flexShrink: 0 }}
+              />
+            </Box>
+          )}
+          {showExpandedPeek && (
+            // בהצצה, הטקסט המלא מוצג ישירות דרך ה-input עצמו (בלי חיתוך/שלוש נקודות) -
+            // רק תגית "כווץ" קטנה צפה מעליו בצד, לא מכסה את כל התא כמו במצב המכווץ
+            <Chip
+              size="small"
+              label="כווץ"
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={(event) => {
+                event.stopPropagation();
+                setExpanded(false);
+              }}
+              sx={{
+                position: 'absolute',
+                insetInlineEnd: 4,
+                top: '50%',
+                transform: 'translateY(-50%)',
+                height: 20,
+                fontSize: '0.7rem',
+                bgcolor: '#ffffff',
+                boxShadow: 1,
+              }}
+            />
+          )}
           {pickListField && (
             <Popper
               open={menuOpen}
@@ -432,8 +555,8 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
                 elevation={4}
                 sx={{ minWidth: boxRef.current?.offsetWidth ?? 120, maxHeight: 220, overflowY: 'auto' }}
               >
-                {menuOptions.length ? (
-                  menuOptions.map((option) => (
+                {filteredOptions.length ? (
+                  filteredOptions.map((option) => (
                     <MenuItem
                       key={option}
                       // מונע מהלחיצה על אפשרות "לגזול" פוקוס מה-input לפני שה-onClick
@@ -448,7 +571,9 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
                     </MenuItem>
                   ))
                 ) : (
-                  <MenuItem disabled>אין עדיין ערכים בעמודה הזו</MenuItem>
+                  <MenuItem disabled>
+                    {menuOptions.length ? 'אין ערך קיים שמתחיל כך' : 'אין עדיין ערכים בעמודה הזו'}
+                  </MenuItem>
                 )}
               </Paper>
             </Popper>
@@ -529,10 +654,58 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
       );
     });
   }, [rows, activeFilters, inputValue, searchableFieldNames]);
+
+  // ref בנוסף למשתנה עצמו - כדי שאפקט "הקפיצה לתא הבעייתי" (ראו למטה) יוכל לקרוא
+  // תמיד את השורות העדכניות ביותר, בלי להיות תלוי ב-filteredRows כ-dependency: אחרת
+  // כל הקשה בכל שדה בטבלה (שמשנה rows ולכן filteredRows) הייתה מפעילה מחדש את
+  // הקפיצה/פוקוס לבעיה הראשונה בתור - גם כשעורכים משהו אחר לגמרי, לא קשור לתיקונים
+  const filteredRowsRef = useRef(filteredRows);
+  useEffect(() => {
+    filteredRowsRef.current = filteredRows;
+  }, [filteredRows]);
+
+  // גוללת אל תא בעייתי נתון וממקדת ישירות ב-input שבתוכו - פונקציה משותפת שנקראת
+  // גם כש"תור התיקונים" משתנה מבחוץ (למשל נוצר מחדש בלחיצה על "שמור"), וגם ישירות
+  // מ-Enter על שדה כלשהו (ר' handleFocusOut) - שם זה נחוץ גם אם התור עצמו לא השתנה
+  // בפועל (Enter על שדה שלא היה בו תיקון בכלל, למשל שדה בשורה חדשה שמוסיפים)
+  const jumpToProblem = (target) => {
+    if (!target || !apiRef.current) return undefined;
+    const rowIndex = filteredRowsRef.current.findIndex((row) => row.id === target.id);
+    if (rowIndex === -1) return undefined;
+    const colIndex = apiRef.current.getColumnIndex(target.field);
+    apiRef.current.scrollToIndexes({ rowIndex, colIndex });
+    // 300ms ולא 50 - כדי לוודא שזה קורה אחרי שאנימציית הסגירה של הפופ-אפ ("שמור בכל
+    // זאת" / "לתקן עכשיו") מסתיימת לגמרי, אחרת הפופ-אפ "גונב" בחזרה את הפוקוס - מחזירה
+    // את מזהה הטיימר כדי שקוראים במסגרת useEffect יוכלו לבטל אותו ב-cleanup אם צריך
+    return setTimeout(() => {
+      // אם בינתיים המשתמשת כבר הספיקה ללחוץ בעצמה על שדה אחר - לא גונבים ממנה את
+      // הפוקוס בחזרה לתא הבעייתי
+      const active = document.activeElement;
+      if (active && active.tagName === 'INPUT' && active !== document.body) return;
+      const input = gridContainerRef.current?.querySelector(
+        `[data-id="${target.id}"] [data-field="${target.field}"] input`
+      );
+      input?.focus();
+    }, 300);
+  };
+
  const requiredFields = useMemo(
     () => new Set(fieldDefs.filter((f) => f.isRequired).map((f) => f.technicalName)),
     [fieldDefs]
   );
+
+  // "בעל" ו"אישה" הם לא שני שדות חובה נפרדים - מספיק שאחד מהם מלא. חסר נחשב בעיה
+  // רק אם שניהם ריקים יחד. getFieldValue מביא את הערך של השדה השני (בעל/אישה) לפי
+  // המקור הזמין בכל מקום שקוראים לזה (row מלא, או apiRef.getCellValue)
+  const isRequiredEmpty = (field, value, getFieldValue) => {
+    if (field === 'man' || field === 'woman') {
+      if (!requiredFields.has('man') && !requiredFields.has('woman')) return false;
+      const manVal = field === 'man' ? value : getFieldValue('man');
+      const womanVal = field === 'woman' ? value : getFieldValue('woman');
+      return !manVal && !womanVal;
+    }
+    return requiredFields.has(field) && !value;
+  };
 
   // בדיקת מדינה/עיר מול ה-API החיצוני הוסרה - הרשימה שם רק באנגלית, בעוד הנתונים כאן
   // בעברית, כך שכל ערך אמיתי היה נפסל בטעות. נשארה רק בדיקת הפורמט של מספר בית.
@@ -560,20 +733,48 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
       const id = rowEl ? rowEl.getAttribute('data-id') : null;
       if (!id || !field) return;
 
+      // ה-blur() הזה נגרם ע"י Enter או ע"י משהו אחר (לחיצת עכבר על שדה אחר וכו')?
+      // נקרא ומיד מתאפס - שייך רק ל-blur הנוכחי הזה, לא ידלוף להבא
+      const wasEnter = blurredViaEnterRef.current;
+      blurredViaEnterRef.current = false;
+
       // ה-DataGrid מעדכן את הערך בפועל רק אחרי שה-focusout מסתיים. הבדיקה קורית
       // רק כשעוזבים את השדה (לא בכל הקשה) - כדי לא לקפוץ לתא הבא באמצע הקלדה,
       // רק אחרי שבאמת סיימו לערוך אותו
       setTimeout(() => {
         const value = apiRef.current.getCellValue(id, field);
-        const stillInvalid = (requiredFields.has(field) && !value) || isValueInvalid(field, value);
+        const stillInvalid =
+          isRequiredEmpty(field, value, (f) => apiRef.current.getCellValue(id, f)) ||
+          isValueInvalid(field, value);
         if (stillInvalid) return;
-        setProblemQueue((prev) => {
-          const remaining = prev.filter((p) => !(String(p.id) === String(id) && p.field === field));
+
+        // עוזבים שדה מהזוג "בעל"/"אישה" כשהוא כבר לא בעיה (העדכון החי כבר וידא שזה
+        // נבדק נכון) - מוציאים מהתור גם את השדה השני מהזוג, לא רק את זה שעזבנו,
+        // אחרת הקפיצה הבאה עדיין הייתה מוצאת אותו ומדגישה אותו בטעות
+        const prev = problemQueueRef.current;
+        const remaining = prev.filter((p) => {
+          if (String(p.id) !== String(id)) return true;
+          if (p.field === field) return false;
+          if ((field === 'man' || field === 'woman') && (p.field === 'man' || p.field === 'woman')) return false;
+          return true;
+        });
+
+        if (remaining.length !== prev.length) {
+          // התור באמת השתנה (תא תוקן) - מעדכנים אותו, ומדכאים את הקפיצה האוטומטית
+          // של האפקט למטה: הקפיצה עצמה מטופלת כאן ישירות, רק כשיצאו עם Enter
+          suppressNextJumpRef.current = true;
           if (remaining.length === 0 && prev.length > 0) {
             onSave(rowsRef.current);
           }
-          return remaining;
-        });
+          setProblemQueue(remaining);
+        }
+
+        // Enter תמיד קופץ לתיקון הראשון שנשאר בתור - גם אם השדה שעזבו לא היה בכלל
+        // חלק מהתיקונים (למשל שדה בשורה חדשה שמוסיפים תוך כדי שיש תיקונים ממתינים).
+        // לחיצת עכבר על שדה אחר לא קופצת בכלל, נותנת לערוך בשקט
+        if (wasEnter && remaining.length > 0) {
+          jumpToProblem(remaining[0]);
+        }
       }, 0);
     };
 
@@ -598,8 +799,8 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
     rowsToCheck.forEach((row) => {
       orderedFieldNames.forEach((field) => {
         const value = row[field];
-        const isRequiredEmpty = requiredFields.has(field) && !value;
-        if (isRequiredEmpty || isValueInvalid(field, value)) {
+        const requiredEmpty = isRequiredEmpty(field, value, (f) => row[f]);
+        if (requiredEmpty || isValueInvalid(field, value)) {
           problems.push({ id: row.id, field });
         }
       });
@@ -622,9 +823,13 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
       const pickListField = ['prefix', 'suffix', 'belongsTo'].includes(f.technicalName)
         ? f.technicalName
         : null;
+      const showRequiredMark =
+        f.isRequired ||
+        ((f.technicalName === 'man' || f.technicalName === 'woman') &&
+          (requiredFields.has('man') || requiredFields.has('woman')));
       return {
         field: f.technicalName,
-        headerName: f.isRequired ? `${f.displayName} *` : f.displayName,
+        headerName: showRequiredMark ? `${f.displayName} *` : f.displayName,
         // flex במקום width קבוע - כל העמודות מתחלקות ברוחב שיש בפועל, כדי שהטבלה
         // תמיד תיכנס בלי גלילה אופקית (בשילוב עם עטיפת שורות במקום חיתוך טקסט)
         flex: isBoolean ? 0.6 : 1,
@@ -645,11 +850,23 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
     });
 
     return [...dynamicColumns, ...systemColumns];
-  }, [orderedFieldDefs, renderAddressCell, renderBooleanCell, renderTextCell, secondarySortFields]);
+  }, [orderedFieldDefs, renderAddressCell, renderBooleanCell, renderTextCell, secondarySortFields, requiredFields]);
 
-  const handleAddSecondarySort = (field) => {
-    if (!field || secondarySortFields.includes(field)) return;
+  // אותה תיבת בחירה משמשת גם למיון הראשי וגם לתתי-המיון: אם עוד אין מיון ראשי (לא
+  // לחצו על החץ בכותרת עמודה), הבחירה הראשונה כאן הופכת להיות המיון הראשי עצמו;
+  // מהבחירה השנייה ואילך זה ממשיך כתת-מיון (שובר שוויון), כמו קודם
+  const handleAddSortField = (field) => {
+    if (!field) return;
+    if (sortModel.length === 0) {
+      setSortModel([{ field, sort: 'asc' }]);
+      return;
+    }
+    if (field === sortModel[0]?.field || secondarySortFields.includes(field)) return;
     setSecondarySortFields((prev) => [...prev, field]);
+  };
+
+  const handleRemovePrimarySort = () => {
+    setSortModel([]);
   };
 
   const handleRemoveSecondarySort = (field) => {
@@ -681,35 +898,37 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
   // גוללים אל התא הראשון בתור וממקדים ישירות ב-input שבתוכו (התאים הם קלטים חיים
   // תמיד, לא מסתמכים על מצב עריכה של ה-DataGrid, אז אין צורך "לפתוח" עריכה בכלל)
   useEffect(() => {
-    if (problemQueue.length === 0 || !apiRef.current) return undefined;
-    const target = problemQueue[0];
-    const rowIndex = filteredRows.findIndex((row) => row.id === target.id);
-    if (rowIndex === -1) return undefined;
-
-    const colIndex = apiRef.current.getColumnIndex(target.field);
-    apiRef.current.scrollToIndexes({ rowIndex, colIndex });
-    // 300ms ולא 50 - כדי לוודא שזה קורה אחרי שאנימציית הסגירה של הפופ-אפ ("שמור בכל
-    // זאת" / "לתקן עכשיו") מסתיימת לגמרי, אחרת הפופ-אפ "גונב" בחזרה את הפוקוס
-    const timer = setTimeout(() => {
-      const input = gridContainerRef.current?.querySelector(
-        `[data-id="${target.id}"] [data-field="${target.field}"] input`
-      );
-      input?.focus();
-    }, 300);
+    // חייב להתאפס תמיד בכל הרצה של האפקט הזה (גם אם התור יצא ריק לגמרי הפעם) - אחרת
+    // אם התור התרוקן בדיוק בפעם שדוכאה קפיצה (למשל לחיצת עכבר, לא Enter), הדגל היה
+    // נשאר "תקוע" true ומדכא בטעות גם את הקפיצה הבאה האמיתית (למשל אחרי Enter אמיתי).
+    // handleFocusOut כבר מטפל בעצמו בקפיצה (jumpToProblem) כשיוצאים עם Enter - האפקט
+    // הזה אחראי רק על המקרה שהתור מתעדכן מבחוץ (בעיקר בלחיצה על "שמור")
+    const shouldSuppress = suppressNextJumpRef.current;
+    suppressNextJumpRef.current = false;
+    if (problemQueue.length === 0 || !apiRef.current || shouldSuppress) return undefined;
+    const timer = jumpToProblem(problemQueue[0]);
     return () => clearTimeout(timer);
+    // תלוי רק ב-problemQueue בכוונה (לא ב-filteredRows/rows) - אחרת כל הקשה בכל שדה
+    // בטבלה (גם בשדה שלא קשור לתיקונים בכלל) הייתה מפעילה מחדש את הקפיצה/פוקוס
+    // לתא הבעייתי הראשון, וגונבת פוקוס ממי שרצה לערוך משהו אחר תוך כדי שיש תיקונים
+    // ממתינים - עכשיו הקפיצה קורית רק כשתור התיקונים עצמו באמת משתנה
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [problemQueue, filteredRows]);
+  }, [problemQueue]);
 
   return (
-    <Box sx={{ position: 'relative' }}>
+    <Box sx={{ position: 'relative', height: '100%', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
     <Paper
       elevation={0}
       sx={{
         width: '100%',
+        height: '100%',
         borderRadius: 0,
         overflow: 'hidden',
         border: 'none',
         boxShadow: 'none',
+        display: 'flex',
+        flexDirection: 'column',
+        minHeight: 0,
       }}
     >
       <Box
@@ -723,6 +942,7 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
           gap: 0.75,
           borderBottom: '1px solid #eef0f3',
           background: 'linear-gradient(180deg, #fbfcfe 0%, #ffffff 100%)',
+          flexShrink: 0,
         }}
       >
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
@@ -768,15 +988,16 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
             </Button>
           )}
 
-          {/* תת-מיון: כשממיינים לפי עמודה כלשהי (בלחיצה על החץ בכותרת), שורות ששוות בה
-              יישברו לפי שרשרת העמודות הנוספות שנבחרות כאן, לפי סדר ההוספה - אפשר להוסיף
-              כמה שרוצים, ואפשר לשנות את הבחירה גם אחרי שכבר ממויין */}
+          {/* תיבת מיון אחת לכול: אם עוד אין מיון ראשי, הבחירה כאן קובעת אותו ישירות -
+              בלי צורך ללחוץ קודם על החץ בכותרת של עמודה. ברגע שיש מיון ראשי (מכאן או
+              מלחיצה על עמודה), אותה תיבה ממשיכה לשמש לתתי-מיון (שובר שוויון), לפי סדר
+              הבחירה, ואפשר להוסיף כמה שרוצים */}
           <TextField
             select
-            label="תת-מיון"
+            label={sortModel.length === 0 ? 'מיון' : 'תת-מיון'}
             size="small"
             value=""
-            onChange={(e) => handleAddSecondarySort(e.target.value)}
+            onChange={(e) => handleAddSortField(e.target.value)}
             sx={{
               width: 100,
               bgcolor: '#ffffff',
@@ -785,13 +1006,26 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
             }}
           >
             {orderedFieldDefs
-              .filter((f) => !secondarySortFields.includes(f.technicalName))
+              .filter((f) => f.technicalName !== sortModel[0]?.field && !secondarySortFields.includes(f.technicalName))
               .map((f) => (
                 <MenuItem key={f.technicalName} value={f.technicalName}>
                   {f.displayName}
                 </MenuItem>
               ))}
           </TextField>
+
+          {sortModel.length > 0 && (() => {
+            const def = orderedFieldDefs.find((f) => f.technicalName === sortModel[0].field);
+            return (
+              <Chip
+                label={`מיון: ${def ? def.displayName : sortModel[0].field}`}
+                onDelete={handleRemovePrimarySort}
+                color="primary"
+                variant="outlined"
+                size="small"
+              />
+            );
+          })()}
 
           {secondarySortFields.map((field, index) => {
             const def = orderedFieldDefs.find((f) => f.technicalName === field);
@@ -856,11 +1090,10 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
         </Stack>
       </Box>
 
-   <Box ref={gridContainerRef} sx={{ px: 1.5, pb: 1, pt: 0.75, maxWidth: '100%', overflowX: 'auto', position: 'relative' }}>
+   <Box ref={gridContainerRef} sx={{ px: 1.5, pb: 1, pt: 0.75, maxWidth: '100%', position: 'relative', flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
 
    <DataGrid
         apiRef={apiRef}
-        autoHeight
         rows={filteredRows}
         getRowId={(row) => row.hashCode ?? row.id}
         columns={columns}
@@ -880,13 +1113,15 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
           ) {
             return 'current-problem-cell';
           }
-          if (requiredFields.has(params.field) && !params.value) return 'required-empty-cell';
+          if (isRequiredEmpty(params.field, params.value, (f) => params.row[f])) return 'required-empty-cell';
           if (isValueInvalid(params.field, params.value)) return 'invalid-value-cell';
           return '';
         }}
         sx={{
           border: 'none',
           borderRadius: 2,
+          flex: 1,
+          minHeight: 0,
           fontSize: '0.875rem',
           fontFamily: '"Rubik", "Segoe UI", Arial, sans-serif',
           '& .MuiDataGrid-columnHeaders': {
@@ -1024,7 +1259,9 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
           sx={{
             position: 'absolute',
             top: hoveredRow.top + hoveredRow.height / 2 - 16,
-            insetInlineEnd: 4,
+            // 4 מספיק כשאין פס גלילה באזור הזה - עכשיו שהטבלה גוללת בתוך עצמה יש שם
+            // גם פס גלילה אנכי, וצריך מרווח גדול יותר כדי שהאייקון לא יתנגש איתו
+            insetInlineEnd: 22,
             zIndex: 5,
             bgcolor: 'transparent',
             boxShadow: 'none',
