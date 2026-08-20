@@ -7,7 +7,7 @@ import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import { DataGrid, useGridApiRef } from '@mui/x-data-grid';
 import { getExcelColumns } from '../services/excelColumnsCache';
 import ExcelImport from './ExcelImport';
-
+import ExcelJS from 'exceljs';
 // מספר בית: ספרות, ואפשר אות אחת בסוף (כמו "12" או "12א")
 const HOUSE_NO_PATTERN = /^\d+[a-zA-Zא-ת]?$/;
 
@@ -183,10 +183,13 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
   };
 
   // "שמור בכל זאת" - מתעלמים מהשדות הבעייתיים ושומרים את הטבלה כמו שהיא
-  const handleSaveAnyway = () => {
-    setSaveAnywayDialogOpen(false);
-    onSave(rows);
-  };
+    const handleSaveAnyway = () => {
+        console.log("נכנסתי לשמור ללא תיקון");
+        console.log("rows:", rows);
+
+        setSaveAnywayDialogOpen(false);
+        onSave(rows);
+    };
 
   // "לתקן עכשיו" - נכנסים לתהליך הקפיצה האוטומטית לתיקון השדות, כמו שהיה קודם
   const handleFixProblemsNow = () => {
@@ -203,10 +206,50 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
     if (onOpenPrint) onOpenPrint();
   };
 
-  const handleDownloadExcel = () => {
-    setExportMenuAnchor(null);
-    apiRef.current.exportDataAsCsv({ utf8WithBom: true });
-  };
+    const handleDownloadExcel = async () => {
+        setExportMenuAnchor(null);
+
+        const workbook = new ExcelJS.Workbook();
+        const worksheet = workbook.addWorksheet('נתונים');
+
+        // כותרות העמודות
+        const visibleColumns = columns.filter(
+            (column) => column.field && columnVisibilityModel[column.field] !== false
+        );
+
+        worksheet.columns = visibleColumns.map((column) => ({
+            header: (column.headerName || column.field).replace(/\s*\*+\s*$/, ''),
+            key: column.field,
+            width: 20,
+        }));
+
+        // השורות שמוצגות כרגע
+        filteredRows.forEach((row) => {
+            const rowData = {};
+
+            visibleColumns.forEach((column) => {
+                rowData[column.field] = row[column.field] ?? '';
+            });
+
+            worksheet.addRow(rowData);
+        });
+
+        // הורדה למחשב
+        const buffer = await workbook.xlsx.writeBuffer();
+
+        const blob = new Blob([buffer], {
+            type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        });
+
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+
+        link.href = url;
+        link.download = 'רשימת מוזמנים.xlsx';
+        link.click();
+
+        URL.revokeObjectURL(url);
+    };
 
   const handleAddRow = () => {
     // חלק מה-id-ים הם hashCode (מחרוזת, לא מספר) - מתעלמים מהם בחישוב המספר הבא
@@ -243,6 +286,7 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
     setSelectionModel([]);
     onSelectionChange([]);
     onAutoSave(updatedRows);
+      console.log("ROWS AFTER DELETE:", updatedRows);
     // מחיקה מפורשת מיידית בשרת - רק השורות שבאמת סומנו ונלחצו עליהן "מחק", לא לפי השוואת רשימה
     if (onDeleteRows) {
       onDeleteRows(selectionModel);
@@ -961,6 +1005,8 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
           toolbarFiltersTooltipHide: 'הסתר מסננים',
           toolbarFiltersTooltipShow: 'הראה מסננים',
           toolbarQuickFilterPlaceholder: 'חיפוש...',
+            noRowsLabel: 'לא נמצאו תוצאות',
+            noResultsOverlayLabel: 'לא נמצאו תוצאות',
           toolbarExport: 'ייצוא',
           toolbarExportLabel: 'ייצוא',
           toolbarExportCSV: 'הורדה כ־CSV',
