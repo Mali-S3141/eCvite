@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import {
     Box,
@@ -14,6 +14,11 @@ export default function RegisterPage() {
 
     const navigate = useNavigate();
     const location = useLocation();
+
+    // "מעיר" את Neon כבר במסך ההרשמה - ר' אותו הסבר ב-LoginPage.jsx
+    useEffect(() => {
+        api.getRecipientColumns().catch(() => {});
+    }, []);
 
     const [emailError, setEmailError] = useState(false);
     const [phoneError, setPhoneError] = useState(false);

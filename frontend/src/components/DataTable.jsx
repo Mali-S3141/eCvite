@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Box,Button,Paper,Stack,Typography,TextField,Chip,Menu,MenuItem,IconButton,Popper,Dialog,DialogTitle,DialogContent,DialogContentText,DialogActions,} from '@mui/material';
-import SwapHorizIcon from '@mui/icons-material/SwapHoriz';
 import ArrowDropDownIcon from '@mui/icons-material/ArrowDropDown';
 import CloseIcon from '@mui/icons-material/Close';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
@@ -31,6 +30,26 @@ const SYSTEM_FIELDS_HIDDEN_BY_DEFAULT = {
 // עמודות כתובת - מהן אפשר להעביר ערך שלא מתאים לעמודת "הערת כתובת" (קליק ימני על התא)
 const ADDRESS_FIELDS = ['country', 'city', 'neighborhood', 'street', 'houseNo'];
 
+// קוראת את "זיכרון המקור" (ר' moveValueToAddressNote) - JSON שנשמר בעמודה נפרדת
+// (addressNoteSources, לא מוצג בטבלה בכלל) ומתאר אילו ערכים בהערת הכתובת הועברו
+// מאיזה שדה. זה מה שמאפשר להציע "החזר ל-X" בלי שום סימן נראה בטקסט של ההערה עצמה
+function parseAddressNoteTags(sourcesJson, fieldDefs) {
+  let sources;
+  try {
+    sources = JSON.parse(sourcesJson || '[]');
+  } catch {
+    return [];
+  }
+  if (!Array.isArray(sources)) return [];
+  return sources
+    .map((entry) => {
+      if (!entry || !ADDRESS_FIELDS.includes(entry.field) || !entry.value) return null;
+      const label = fieldDefs.find((f) => f.technicalName === entry.field)?.displayName || entry.field;
+      return { field: entry.field, value: entry.value, label };
+    })
+    .filter(Boolean);
+}
+
 // המיון המובנה של הטבלה (Intl.Collator() בלי locale) לא ממיין נכון לפי א'-ב' עברי -
 // collator עם locale 'he' ממיין נכון, וגם numeric:true נותן סדר טבעי למספרים (כמו במספר בית)
 const hebrewCollator = new Intl.Collator('he', { numeric: true, sensitivity: 'base' });
@@ -58,7 +77,7 @@ function createTextSortComparator(field, secondaryFields) {
   };
 }
 
-export default function DataTable({ records, loading, onSave, onAutoSave, onSelectionChange, onDeleteRows, initialSelectedIds, onImport, onOpenPrint }) {
+export default function DataTable({ records, loading, onSave, onAutoSave, onSelectionChange, onDeleteRows, initialSelectedIds, onImport, onOpenPrint, columnPreferences }) {
   const [rows, setRows] = useState(records);
   const [selectionModel, setSelectionModel] = useState(initialSelectedIds || []);
   const [sortModel, setSortModel] = useState([]);
@@ -103,7 +122,9 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
       const cellEl = event.target.closest('.MuiDataGrid-cell');
       if (!cellEl) return;
       const field = cellEl.getAttribute('data-field');
-      if (!ADDRESS_FIELDS.includes(field)) return;
+      // עמודות כתובת - קליק ימני מעביר ערך להערת כתובת. עמודת הערת הכתובת עצמה -
+      // קליק ימני מציע להחזיר ערכים שכבר הועברו אליה בעבר בחזרה לשדה המקורי שלהם
+      if (!ADDRESS_FIELDS.includes(field) && field !== 'addressNote') return;
       const rowEl = event.target.closest('.MuiDataGrid-row');
       const id = rowEl ? rowEl.getAttribute('data-id') : null;
       if (!id) return;
@@ -239,6 +260,7 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
       street: '',
       houseNo: '',
       addressNote: '',
+      addressNoteSources: '',
       belongsTo: '',
       print: false,
     };
@@ -303,17 +325,29 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
   }, [onAutoSave, apiRef]);
 
   // מעבירה את הערך מתא בעמודת כתובת (כשהוא לא מתאים) לעמודת "הערת כתובת" -
-  // ומרוקנת את התא המקורי. אם כבר יש תוכן בהערת הכתובת, משרשרת אליו במקום לדרוס
+  // ומרוקנת את התא המקורי. אם כבר יש תוכן בהערת הכתובת, משרשרת אליו (מופרד ב-";")
+  // במקום לדרוס - בלי שום תיוג נראה בטקסט עצמו. מאיזה שדה הערך הגיע נשמר בנפרד,
+  // ב-addressNoteSources (JSON, עמודה נפרדת ב-DB שלא מוצגת בטבלה בכלל) - כך
+  // שאפשר יהיה להחזיר אותו בעתיד גם אחרי רענון (ר' handleReturnFromAddressNote)
   const moveValueToAddressNote = useCallback((id, field) => {
     const updatedRows = rowsRef.current.map((row) => {
       if (String(row.id) !== String(id)) return row;
       const value = String(row[field] ?? '').trim();
       if (!value) return row;
       const existingNote = String(row.addressNote ?? '').trim();
+      let sources;
+      try {
+        sources = JSON.parse(row.addressNoteSources || '[]');
+      } catch {
+        sources = [];
+      }
+      if (!Array.isArray(sources)) sources = [];
+      sources.push({ field, value });
       return {
         ...row,
         [field]: '',
-        addressNote: existingNote ? `${existingNote} ${value}` : value,
+        addressNote: existingNote ? `${existingNote}; ${value}` : value,
+        addressNoteSources: JSON.stringify(sources),
       };
     });
     setRows(updatedRows);
@@ -323,6 +357,55 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
   const handleMoveToAddressNote = () => {
     if (!contextMenu) return;
     moveValueToAddressNote(contextMenu.id, contextMenu.field);
+    setContextMenu(null);
+  };
+
+  // מחזירה ערך שהועבר בעבר (ר' למעלה) מהערת הכתובת בחזרה לשדה שממנו הוא הגיע -
+  // מוציאה מופע אחד (הראשון התואם) מהטקסט של ההערה (שאר החלקים, כולל טקסט חופשי
+  // שהוקלד ידנית, נשארים בדיוק כמו שהיו) ואת אותה רשומה מ-addressNoteSources
+  const handleReturnFromAddressNote = (tag) => {
+    if (!contextMenu) return;
+    const { id } = contextMenu;
+    const updatedRows = rowsRef.current.map((row) => {
+      if (String(row.id) !== String(id)) return row;
+      let removedFromNote = false;
+      const remainingChunks = String(row.addressNote ?? '')
+        .split(';')
+        .map((chunk) => chunk.trim())
+        .filter((chunk) => {
+          if (!chunk) return false;
+          if (!removedFromNote && chunk === tag.value) {
+            removedFromNote = true;
+            return false;
+          }
+          return true;
+        });
+
+      let sources;
+      try {
+        sources = JSON.parse(row.addressNoteSources || '[]');
+      } catch {
+        sources = [];
+      }
+      if (!Array.isArray(sources)) sources = [];
+      let removedFromSources = false;
+      sources = sources.filter((entry) => {
+        if (!removedFromSources && entry?.field === tag.field && entry?.value === tag.value) {
+          removedFromSources = true;
+          return false;
+        }
+        return true;
+      });
+
+      return {
+        ...row,
+        [tag.field]: tag.value,
+        addressNote: remainingChunks.join('; '),
+        addressNoteSources: JSON.stringify(sources),
+      };
+    });
+    setRows(updatedRows);
+    onAutoSave(updatedRows);
     setContextMenu(null);
   };
 
@@ -338,7 +421,6 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
           width: '100%',
           height: '100%',
           px: 1,
-          '&:hover .move-to-note-icon': { opacity: 1 },
         }}
       >
         <input
@@ -371,25 +453,9 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
             background: 'transparent',
           }}
         />
-        {value && (
-          <IconButton
-            className="move-to-note-icon"
-            size="small"
-            tabIndex={-1}
-            title="העבר להערת כתובת"
-            sx={{ opacity: 0, transition: 'opacity 0.15s', p: 0.25, flexShrink: 0 }}
-            onMouseDown={(event) => event.preventDefault()}
-            onClick={(event) => {
-              event.stopPropagation();
-              moveValueToAddressNote(id, field);
-            }}
-          >
-            <SwapHorizIcon fontSize="inherit" />
-          </IconButton>
-        )}
       </Box>
     );
-  }, [moveValueToAddressNote, updateCellValue]);
+  }, [updateCellValue]);
 
   // תא טקסט חי - קלט חופשי לגמרי תמיד, ואם יש pickListField (עמודות קידומת/סיום/
   // שייך ל) גם חץ קטן לצידו שפותח Menu לבחירה מהערכים הקיימים באותה עמודה. שתי
@@ -552,8 +618,16 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
               style={{ zIndex: 1300 }}
             >
               <Paper
-                elevation={4}
-                sx={{ minWidth: boxRef.current?.offsetWidth ?? 120, maxHeight: 220, overflowY: 'auto' }}
+                elevation={0}
+                sx={{
+                  width: 'fit-content',
+                  maxHeight: 220,
+                  overflowY: 'auto',
+                  borderRadius: 2,
+                  boxShadow: '0 8px 24px rgba(15, 23, 42, 0.16)',
+                  border: '1px solid #93c5fd',
+                  p: 0.25,
+                }}
               >
                 {filteredOptions.length ? (
                   filteredOptions.map((option) => (
@@ -566,12 +640,20 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
                         updateCellValue(id, field, option);
                         closeMenu();
                       }}
+                      sx={{
+                        fontSize: '0.875rem',
+                        minHeight: 26,
+                        py: 0,
+                        borderRadius: 1.5,
+                        my: 0.15,
+                        '&:hover': { bgcolor: '#eff6ff' },
+                      }}
                     >
                       {option}
                     </MenuItem>
                   ))
                 ) : (
-                  <MenuItem disabled>
+                  <MenuItem disabled sx={{ fontSize: '0.875rem', minHeight: 26, py: 0, borderRadius: 1.5 }}>
                     {menuOptions.length ? 'אין ערך קיים שמתחיל כך' : 'אין עדיין ערכים בעמודה הזו'}
                   </MenuItem>
                 )}
@@ -887,12 +969,12 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
     if (fieldDefs.length === 0) return;
     const model = { ...SYSTEM_FIELDS_HIDDEN_BY_DEFAULT };
     fieldDefs.forEach((f) => {
-      if (!f.defaultOrder) {
-        model[f.technicalName] = false;
-      }
+      // העדפה אישית של המשתמשת (ניהול עמודות) גוברת על ברירת המחדל אם קיימת
+      const userChoice = columnPreferences?.[f.technicalName]?.show;
+      model[f.technicalName] = userChoice !== undefined ? userChoice : Boolean(f.defaultOrder);
     });
     setColumnVisibilityModel(model);
-  }, [fieldDefs]);
+  }, [fieldDefs, columnPreferences]);
 
   // בכל פעם שתור התיקונים מתעדכן (שמירה נחסמה, או שתוקן תא אחד וקפצנו לבא) -
   // גוללים אל התא הראשון בתור וממקדים ישירות ב-input שבתוכו (התאים הם קלטים חיים
@@ -934,7 +1016,7 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
       <Box
         sx={{
           px: 1.5,
-          py: 0.5,
+          py: 1,
           display: 'flex',
           justifyContent: 'space-between',
           alignItems: 'center',
@@ -957,10 +1039,12 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
             onChange={handleInputChange}
             onKeyDown={handleKeyDown}
             sx={{
-              width: 190,
+              width: 150,
               bgcolor: '#ffffff',
-              '& .MuiOutlinedInput-root': { borderRadius: 2 },
+              '& .MuiOutlinedInput-root': { borderRadius: 2, height: '25px' },
+              '& .MuiOutlinedInput-input': { padding: '4px 8px', boxSizing: 'border-box', height: '100%' },
               '& .MuiInputLabel-root': { fontSize: '0.72rem' },
+              '& .MuiInputLabel-root:not(.MuiInputLabel-shrink)': { top: '50%', transform: 'translate(14px, -50%) scale(1)' },
             }}
           />
 
@@ -971,7 +1055,7 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
               label={filter}
               onDelete={() => handleRemoveChip(filter)}
               color="primary"
-              variant="contained"
+              variant="outlined"
               size="small"
             />
           ))}
@@ -979,10 +1063,21 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
           {(activeFilters.length > 0 || inputValue.trim() !== '' || sortModel.length > 0 || secondarySortFields.length > 0) && (
             <Button
               variant="outlined"
-              color="error"
               size="small"
               onClick={handleFullReset}
-              sx={{ fontWeight: 700, borderRadius: 2, textTransform: 'none', whiteSpace: 'nowrap' }}
+              sx={{
+                borderRadius: 2,
+                textTransform: 'none',
+                fontWeight: 600,
+                bgcolor: '#ffffff',
+                color: '#1e293b',
+                borderColor: '#60a5fa',
+                whiteSpace: 'nowrap',
+                py: 0.15,
+                px: 1,
+                fontSize: '0.75rem',
+                '&:hover': { bgcolor: '#eff6ff', borderColor: '#60a5fa' },
+              }}
             >
               בטל סינון/מיון
             </Button>
@@ -999,10 +1094,12 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
             value=""
             onChange={(e) => handleAddSortField(e.target.value)}
             sx={{
-              width: 100,
+              width: 80,
               bgcolor: '#ffffff',
-              '& .MuiOutlinedInput-root': { borderRadius: 2 },
+              '& .MuiOutlinedInput-root': { borderRadius: 2, height: '25px' },
+              '& .MuiOutlinedInput-input': { padding: '4px 8px', boxSizing: 'border-box', height: '100%', display: 'flex', alignItems: 'center' },
               '& .MuiInputLabel-root': { fontSize: '0.72rem' },
+              '& .MuiInputLabel-root:not(.MuiInputLabel-shrink)': { top: '50%', transform: 'translate(14px, -50%) scale(1)' },
             }}
           >
             {orderedFieldDefs
@@ -1034,7 +1131,7 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
                 key={field}
                 label={`${index + 1}. ${def ? def.displayName : field}`}
                 onDelete={() => handleRemoveSecondarySort(field)}
-                color="secondary"
+                color="primary"
                 variant="outlined"
                 size="small"
               />
@@ -1050,39 +1147,58 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
             size="small"
             onClick={(event) => setExportMenuAnchor(event.currentTarget)}
             endIcon={<ArrowDropDownIcon />}
-            sx={{ borderRadius: 2, textTransform: 'none', fontWeight: 600 }}
+            sx={{
+              borderRadius: 2,
+              textTransform: 'none',
+              fontWeight: 600,
+              bgcolor: '#ffffff',
+              color: '#1e293b',
+              borderColor: '#60a5fa',
+              py: 0.15,
+              px: 1,
+              fontSize: '0.75rem',
+              '&:hover': { bgcolor: '#eff6ff', borderColor: '#60a5fa' },
+            }}
           >
             יצוא
           </Button>
 
           <Button
-            variant="contained"
+            variant="outlined"
             size="small"
             onClick={handleAddRow}
             sx={{
               borderRadius: 2,
               textTransform: 'none',
               fontWeight: 600,
-              boxShadow: 'none',
-              bgcolor: '#60a5fa',
+              bgcolor: '#ffffff',
+              color: '#1e293b',
+              borderColor: '#60a5fa',
               whiteSpace: 'nowrap',
-              '&:hover': { bgcolor: '#3b82f6', boxShadow: '0 6px 16px rgba(96, 165, 250, 0.35)' },
+              py: 0.15,
+              px: 1,
+              fontSize: '0.75rem',
+              '&:hover': { bgcolor: '#eff6ff', borderColor: '#60a5fa' },
             }}
           >
             הוסף שורה
           </Button>
           <Button
-            variant="contained"
+            variant="outlined"
             size="small"
             onClick={handleSaveClick}
             sx={{
               borderRadius: 2,
               textTransform: 'none',
               fontWeight: 600,
-              boxShadow: 'none',
-              bgcolor: '#60a5fa',
+              bgcolor: '#ffffff',
+              color: '#1e293b',
+              borderColor: '#60a5fa',
               whiteSpace: 'nowrap',
-              '&:hover': { bgcolor: '#3b82f6', boxShadow: '0 6px 16px rgba(96, 165, 250, 0.35)' },
+              py: 0.15,
+              px: 1,
+              fontSize: '0.75rem',
+              '&:hover': { bgcolor: '#eff6ff', borderColor: '#60a5fa' },
             }}
           >
             שמור את כל המוזמנים
@@ -1100,7 +1216,21 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
         loading={loading}
         checkboxSelection
         disableRowSelectionOnClick
+        density="compact"
+        rowHeight={32}
+        columnHeaderHeight={40}
         getCellClassName={(params) => {
+          // התא שעליו נלחץ קליק ימני (בזמן שתפריט "העבר להערת כתובת" פתוח) - מודגש
+          // כדי שיהיה ברור על איזה ערך מדובר. יורד אוטומטית כשהתפריט נסגר (contextMenu
+          // חוזר ל-null), לא תלוי בכלל בתור התיקונים למטה
+          if (
+            contextMenu &&
+            String(params.id) === String(contextMenu.id) &&
+            params.field === contextMenu.field
+          ) {
+            return 'context-menu-target-cell';
+          }
+
           // צביעה בכלל לא קורית לפני שהיה ניסיון שמירה שנחסם - שורה חדשה/ריקה לא נצבעת
           // מיד, רק אחרי שלוחצים "שמור את כל המוזמנים" ונמצאות בעיות בפועל
           if (problemQueue.length === 0) return '';
@@ -1161,6 +1291,9 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
             outline: '1.5px solid #f0a860',
             outlineOffset: '-1.5px',
             borderRadius: '6px',
+          },
+          '& .context-menu-target-cell': {
+            backgroundColor: '#eff6ff !important',
           },
           '& .current-problem-cell': {
             backgroundColor: '#ffe4e8 !important',
@@ -1288,8 +1421,48 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
         onClose={handleCloseContextMenu}
         anchorReference="anchorPosition"
         anchorPosition={contextMenu !== null ? { top: contextMenu.mouseY, left: contextMenu.mouseX } : undefined}
+        transitionDuration={0}
+        PaperProps={{
+          sx: {
+            borderRadius: 2,
+            boxShadow: '0 8px 24px rgba(15, 23, 42, 0.16)',
+            minWidth: 'unset',
+            bgcolor: '#eff6ff',
+            border: '1px solid #93c5fd',
+            overflow: 'hidden',
+          },
+        }}
+        MenuListProps={{ sx: { py: 0 } }}
       >
-        <MenuItem onClick={handleMoveToAddressNote}>העבר להערת כתובת</MenuItem>
+        {contextMenu?.field === 'addressNote' ? (
+          (() => {
+            const row = rows.find((r) => String(r.id) === String(contextMenu.id));
+            const tags = parseAddressNoteTags(row?.addressNoteSources, fieldDefs);
+            if (tags.length === 0) {
+              return (
+                <MenuItem disabled sx={{ py: 0.5, px: 1, fontSize: '0.78rem', minHeight: 'unset' }}>
+                  אין ערכים להחזיר
+                </MenuItem>
+              );
+            }
+            return tags.map((tag, index) => (
+              <MenuItem
+                key={`${tag.field}-${tag.value}-${index}`}
+                onClick={() => handleReturnFromAddressNote(tag)}
+                sx={{ py: 0.5, px: 1, fontSize: '0.78rem', minHeight: 'unset' }}
+              >
+                {`החזר ל${tag.label}`}
+              </MenuItem>
+            ));
+          })()
+        ) : (
+          <MenuItem
+            onClick={handleMoveToAddressNote}
+            sx={{ py: 0.5, px: 1, fontSize: '0.78rem', minHeight: 'unset' }}
+          >
+            העבר להערת כתובת
+          </MenuItem>
+        )}
       </Menu>
 
       {/* disableRestoreFocus - בלי זה ה-Dialog "מחזיר" את הפוקוס לכפתור השמירה אחרי

@@ -145,7 +145,10 @@ public class RecipientController {
             userRecipientsRepository.saveAll(links);
         }
 
-        return ResponseEntity.ok().build();
+        // מחזירים את הנתונים המעודכנים בפועל (כולל hashCode טרי לנמענים חדשים, ו"שייך
+        // ל" אחרי איחוד) - כדי שהפרונט יוכל לעדכן את הטבלה מיד מהתשובה הזו, בלי לבקש
+        // מחדש את כל הרשימה מהשרת בנפרד (בקשה שלישית שהאיטה את "שמור" בפועל)
+        return ResponseEntity.ok(savedRecipients);
     }
 
     // מאחדת ערכי "שייך ל" (מופרדים בפסיק) מהרשומה הקיימת ב-DB ומהשורה שנשלחה עכשיו,

@@ -74,6 +74,13 @@ function applyRenameMap(rows, renameMap) {
   });
 }
 
+// שורה שאין בה שום ערך אמיתי באף עמודה (לפעמים אקסל "זוכר" שורה כחלק מהגליון גם
+// אחרי שהתוכן נמחק ממנה, למשל אם הייתה בה פעם עיצוב/גבול) - לא אמורה להיכנס לטבלה
+// בכלל, לא בתור "מוזמן ריק"
+function isBlankRow(row) {
+  return Object.values(row).every((value) => String(value ?? '').trim() === '');
+}
+
 // שורה שאין בה כלום בעמודת מדינה - כנראה כי לא כתבו שם משהו במיוחד - מקבלת כברירת מחדל "ישראל"
 function applyDefaultCountry(rows) {
   return rows.map((row) =>
@@ -126,7 +133,7 @@ function mergeDuplicateIdentities(rows) {
 }
 
 export default function ExcelImport({ onImport }) {
-  const [fileName, setFileName] = useState('');
+  const [fileNames, setFileNames] = useState([]); // כל הקבצים שהועלו בסשן הזה (לא רק האחרון)
   const [matchError, setMatchError] = useState('');
   const [pending, setPending] = useState(null);
   const [belongsToPrompt, setBelongsToPrompt] = useState(null); // { matchingSheets, checked, resume }
@@ -208,7 +215,7 @@ export default function ExcelImport({ onImport }) {
   const handleFile = async (event) => {
     const file = event.target.files?.[0];
     if (!file) return;
-    setFileName(file.name);
+    setFileNames((prev) => [...prev, file.name]);
     setMatchError('');
 
     const data = await file.arrayBuffer();
@@ -222,7 +229,7 @@ export default function ExcelImport({ onImport }) {
       const rawJson = XLSX.utils.sheet_to_json(sheet, { defval: '' });
       return {
         sheetName: name,
-        json: applyRenameMap(rawJson, renameMap),
+        json: applyRenameMap(rawJson, renameMap).filter((row) => !isBlankRow(row)),
         trueOrder,
         labels,
       };
@@ -316,16 +323,23 @@ export default function ExcelImport({ onImport }) {
           whiteSpace: 'nowrap',
           bgcolor: '#ffffff',
           color: '#1e293b',
-          borderColor: '#e2e8f0',
-          '&:hover': { bgcolor: '#f8fafc', borderColor: '#cbd5e1' },
+          borderColor: '#60a5fa',
+          py: 0.15,
+          px: 1,
+          fontSize: '0.75rem',
+          '&:hover': { bgcolor: '#eff6ff', borderColor: '#60a5fa' },
         }}
       >
         ייבוא Excel
         <input hidden type="file" accept=".xlsx,.xls" onChange={handleFile} />
       </Button>
-      {fileName && (
-        <Typography variant="caption" sx={{ maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-          {fileName}
+      {fileNames.length > 0 && (
+        <Typography
+          variant="caption"
+          title={fileNames.join(', ')}
+          sx={{ maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+        >
+          {fileNames.join(', ')}
         </Typography>
       )}
       {matchError && (
