@@ -3,6 +3,8 @@ import { Box,Button,Paper,Stack,Typography,TextField,Chip,Menu,MenuItem,IconButt
 import ArrowDropDownIcon from '@mui/icons-material/ArrowDropDown';
 import CloseIcon from '@mui/icons-material/Close';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
+import LocalPrintshopOutlinedIcon from '@mui/icons-material/LocalPrintshopOutlined';
+import FileDownloadOutlinedIcon from '@mui/icons-material/FileDownloadOutlined';
 import { DataGrid, useGridApiRef } from '@mui/x-data-grid';
 import { getExcelColumns } from '../services/excelColumnsCache';
 import ExcelImport from './ExcelImport';
@@ -1412,8 +1414,14 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
         anchorEl={exportMenuAnchor}
         onClose={() => setExportMenuAnchor(null)}
       >
-        <MenuItem onClick={handlePrintLabels}>הדפסת מדבקות</MenuItem>
-        <MenuItem onClick={handleDownloadExcel}>הורדת קובץ אקסל למחשב</MenuItem>
+        <MenuItem onClick={handlePrintLabels} sx={{ gap: 1.5 }}>
+          <LocalPrintshopOutlinedIcon fontSize="small" sx={{ color: '#475569' }} />
+          הדפסת מדבקות
+        </MenuItem>
+        <MenuItem onClick={handleDownloadExcel} sx={{ gap: 1.5 }}>
+          <FileDownloadOutlinedIcon fontSize="small" sx={{ color: '#475569' }} />
+          הורדת קובץ אקסל למחשב
+        </MenuItem>
       </Menu>
 
       <Menu
