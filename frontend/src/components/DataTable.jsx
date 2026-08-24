@@ -137,7 +137,7 @@ function ColumnHeader({
   );
 }
 
-export default function DataTable({ records, loading, onSave, onAutoSave, onSelectionChange, onDeleteRows, initialSelectedIds, onImport, onOpenPrint, columnPreferences, profileMenu }) {
+export default function DataTable({ records, loading, onSave, onAutoSave, onSelectionChange, onDeleteRows, initialSelectedIds, onImport, onOpenPrint, columnPreferences, profileMenu, onColumnOrderChange }) {
   const [rows, setRows] = useState(records);
   const [selectionModel, setSelectionModel] = useState(initialSelectedIds || []);
   const [sortModel, setSortModel] = useState([]);
@@ -156,6 +156,10 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
   const [dragArmedField, setDragArmedField] = useState(null); // איזו עמודה "משוחררת" לגרירה אחרי דאבל-קליק על הכותרת שלה
   const dragTrackingRef = useRef(null); // { field, startX, startY, moved } בזמן גרירת עמודה לסידור מחדש
   const resizingRef = useRef(null); // { field, startX, startWidth } בזמן גרירת קו ההרחבה
+  const onColumnOrderChangeRef = useRef(onColumnOrderChange);
+  useEffect(() => {
+    onColumnOrderChangeRef.current = onColumnOrderChange;
+  }, [onColumnOrderChange]);
   const appliedInitialSelection = useRef(false);
   const apiRef = useGridApiRef();
   // ה-columns מחושבות רק פעם אחת (memo תלוי ב-fieldDefs) והפעולות שבתוכן (renderCell)
@@ -939,19 +943,21 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
   );
   const orderedFieldNames = useMemo(() => orderedFieldDefs.map((f) => f.technicalName), [orderedFieldDefs]);
 
-  // הסדר החזותי בפועל של העמודות בטבלה: ברירת המחדל (orderedFieldNames) עד שהמשתמשת
-  // גוררת עמודה, ואז columnOrder גובר. משמש רק לבניית columns למטה - לא נוגע בסדר
-  // שמשמש את "קפיצה לתא הבעייתי הבא" או את רשימת הבחירה בתיבת המיון, כדי לא לשנות
-  // התנהגות קיימת של תכונות אחרות
+  // הסדר החזותי בפועל של העמודות בטבלה: בפעם הראשונה - הסדר שהמשתמשת שמרה בעבר
+  // (columnPreferences.__order), אם יש כזה, אחרת ברירת המחדל (orderedFieldNames).
+  // מהפעם השנייה ואילך columnOrder (מה-state) גובר. משמש רק לבניית columns למטה -
+  // לא נוגע בסדר שמשמש את "קפיצה לתא הבעייתי הבא" או את רשימת הבחירה בתיבת המיון,
+  // כדי לא לשנות התנהגות קיימת של תכונות אחרות
   useEffect(() => {
     if (orderedFieldNames.length === 0) return;
     setColumnOrder((prev) => {
-      if (!prev) return orderedFieldNames;
-      const stillValid = prev.filter((f) => orderedFieldNames.includes(f));
+      const base = prev ?? columnPreferences?.__order ?? orderedFieldNames;
+      const stillValid = base.filter((f) => orderedFieldNames.includes(f));
       const missing = orderedFieldNames.filter((f) => !stillValid.includes(f));
-      if (stillValid.length === prev.length && missing.length === 0) return prev;
+      if (prev && stillValid.length === prev.length && missing.length === 0) return prev;
       return [...stillValid, ...missing];
     });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [orderedFieldNames]);
 
   const displayFieldDefs = useMemo(() => {
@@ -1043,7 +1049,9 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
           const targetIndex = withoutSource.indexOf(targetField);
           if (targetIndex === -1) return base;
           const insertIndex = dropInRightHalf ? targetIndex : targetIndex + 1;
-          return [...withoutSource.slice(0, insertIndex), sourceField, ...withoutSource.slice(insertIndex)];
+          const newOrder = [...withoutSource.slice(0, insertIndex), sourceField, ...withoutSource.slice(insertIndex)];
+          onColumnOrderChangeRef.current?.(newOrder);
+          return newOrder;
         });
       };
 

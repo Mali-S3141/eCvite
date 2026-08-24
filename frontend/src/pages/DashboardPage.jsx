@@ -344,6 +344,23 @@ export default function DashboardPage() {
     </Box>
   );
 
+  // סדר העמודות שהמשתמשת גררה נשמר מיד לשרת, בלי לחכות ללחיצה על "שמור שינויים" -
+  // זה שונה במפורש מהצג/הדפס (שנשמרים רק בלחיצה על שמור), כי הגרירה קורית בטבלה
+  // עצמה, לא במסך ההגדרות. נשמר יחד עם אותה עמודה/מבנה JSON שכבר קיים להצג/הדפס,
+  // בתוך מפתח נפרד (__order), כדי לא לפתוח עמודה חדשה בנאון בשביל זה
+  const handleColumnOrderChange = async (order) => {
+    const currentPrefs = parseColumnPreferences(user?.columnPreferences);
+    const columnPreferences = JSON.stringify({ ...currentPrefs, __order: order });
+    let updatedUser = { ...user, columnPreferences };
+    try {
+      const response = await api.updateColumnPreferences(user.phone, columnPreferences);
+      updatedUser = response.data;
+    } catch {
+      // אם קריאת השרת נכשלה, שומרים לפחות מקומית כדי שהשינוי לא ילך לאיבוד בטעות
+    }
+    sessionStorage.setItem('user', JSON.stringify(updatedUser));
+  };
+
   return (
       <Box sx={{ width: '100%', height: '100vh', px: 2, pt: 0.5, pb: 1, display: 'flex', flexDirection: 'column' }}>
 
@@ -366,6 +383,7 @@ export default function DashboardPage() {
               onOpenPrint={() => setIsPrintModalOpen(true)}
               columnPreferences={parseColumnPreferences(user?.columnPreferences)}
               profileMenu={profileMenu}
+              onColumnOrderChange={handleColumnOrderChange}
           />
         </Box>
 
