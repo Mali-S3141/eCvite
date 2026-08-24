@@ -1179,6 +1179,9 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
     });
 
     return [...dynamicColumns, ...systemColumns];
+    // handleHeaderSortClick תלוי רק ב-sortModel, שכבר ברשימת התלויות למטה - אין צורך
+    // לחשב מחדש את כל העמודות בכל רינדור רק כי הפונקציה עצמה נוצרת מחדש בכל פעם
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [displayFieldDefs, renderAddressCell, renderBooleanCell, renderTextCell, secondarySortFields, requiredFields, columnWidths, sortModel, dragArmedField]);
 
   // אותה תיבת בחירה משמשת גם למיון הראשי וגם לתתי-המיון: אם עוד אין מיון ראשי (לא
