@@ -5,7 +5,7 @@ import SettingsOutlinedIcon from '@mui/icons-material/SettingsOutlined';
 import LogoutOutlinedIcon from '@mui/icons-material/LogoutOutlined';
 import DataTable from '../components/DataTable';
 import api from '../services/api';
-import PrintModal from '../components/PrintModal'; // ייבוא המודאל החדש
+import PrintModal from '../components/PrintModal'; 
 import { buildIdentityKey, mergeBelongsToValues } from '../utils/recipientIdentity';
 import { parseColumnPreferences } from '../utils/columnPreferences';
 
@@ -287,65 +287,65 @@ export default function DashboardPage() {
 
     return 'ערב טוב';
   };
+  const profileMenu = (
+    <Box sx={{ display: 'inline-flex' }}>
+      <IconButton onClick={(e) => setProfileMenuAnchor(e.currentTarget)} size="small">
+        <Avatar sx={{ width: 30, height: 30, bgcolor: '#1e3a8a', fontSize: '0.9rem' }}>
+          {getInitials(user?.firstNameMan || user?.firstNameWoman || 'משתמש')}
+        </Avatar>
+      </IconButton>
+      <Menu
+        anchorEl={profileMenuAnchor}
+        open={Boolean(profileMenuAnchor)}
+        onClose={() => setProfileMenuAnchor(null)}
+        transitionDuration={0}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+        transformOrigin={{ vertical: 'top', horizontal: 'center' }}
+        PaperProps={{
+          sx: {
+            mt: 1,
+            width: 320,
+            borderRadius: 4,
+            boxShadow: '0 8px 28px rgba(15, 23, 42, 0.18)',
+            p: 3,
+          },
+        }}
+        MenuListProps={{ sx: { p: 0 } }}
+      >
+        <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', pb: 2 }}>
+          <Avatar sx={{ width: 72, height: 72, bgcolor: '#1e3a8a', fontSize: '2rem' }}>
+            {getInitials(user?.firstNameMan || user?.firstNameWoman || 'משתמש')}
+          </Avatar>
+          <Typography variant="h6" sx={{ fontWeight: 700, color: '#0f172a', mt: 1.5 }}>
+            {getGreeting()}, {user?.firstNameMan || user?.firstNameWoman || 'משתמש'}!
+          </Typography>
+        </Box>
+
+        <Box sx={{ bgcolor: '#f8fafc', borderRadius: 3, p: 0.5, display: 'flex', flexDirection: 'column', gap: 0.5 }}>
+          <MenuItem
+            onClick={() => {
+              setProfileMenuAnchor(null);
+              navigate('/settings');
+            }}
+            sx={{ borderRadius: 2.5, py: 1.25, px: 2, gap: 1.5, '&:hover': { bgcolor: '#eef2f7' } }}
+          >
+            <SettingsOutlinedIcon fontSize="small" sx={{ color: '#475569' }} />
+            <Typography variant="body2" sx={{ fontWeight: 600, color: '#1e293b' }}>הגדרות</Typography>
+          </MenuItem>
+          <MenuItem
+            onClick={handleLogout}
+            sx={{ borderRadius: 2.5, py: 1.25, px: 2, gap: 1.5, '&:hover': { bgcolor: '#eef2f7' } }}
+          >
+            <LogoutOutlinedIcon fontSize="small" sx={{ color: '#475569' }} />
+            <Typography variant="body2" sx={{ fontWeight: 600, color: '#1e293b' }}>יציאה</Typography>
+          </MenuItem>
+        </Box>
+      </Menu>
+    </Box>
+  );
+
   return (
       <Box sx={{ width: '100%', height: '100vh', px: 2, pt: 0.5, pb: 1, display: 'flex', flexDirection: 'column' }}>
-
-
-
-        <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 0.25 }}>
-          <IconButton onClick={(e) => setProfileMenuAnchor(e.currentTarget)} size="small">
-            <Avatar sx={{ width: 34, height: 34, bgcolor: '#1e3a8a', fontSize: '1rem' }}>
-              {getInitials(user?.firstNameMan || user?.firstNameWoman || 'משתמש')}
-            </Avatar>
-          </IconButton>
-          <Menu
-            anchorEl={profileMenuAnchor}
-            open={Boolean(profileMenuAnchor)}
-            onClose={() => setProfileMenuAnchor(null)}
-            transitionDuration={0}
-            anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
-            transformOrigin={{ vertical: 'top', horizontal: 'center' }}
-            PaperProps={{
-              sx: {
-                mt: 1,
-                width: 320,
-                borderRadius: 4,
-                boxShadow: '0 8px 28px rgba(15, 23, 42, 0.18)',
-                p: 3,
-              },
-            }}
-            MenuListProps={{ sx: { p: 0 } }}
-          >
-            <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', pb: 2 }}>
-              <Avatar sx={{ width: 72, height: 72, bgcolor: '#1e3a8a', fontSize: '2rem' }}>
-                {getInitials(user?.firstNameMan || user?.firstNameWoman || 'משתמש')}
-              </Avatar>
-              <Typography variant="h6" sx={{ fontWeight: 700, color: '#0f172a', mt: 1.5 }}>
-                {getGreeting()}, {user?.firstNameMan || user?.firstNameWoman || 'משתמש'}!
-              </Typography>
-            </Box>
-
-            <Box sx={{ bgcolor: '#f8fafc', borderRadius: 3, p: 0.5, display: 'flex', flexDirection: 'column', gap: 0.5 }}>
-              <MenuItem
-                onClick={() => {
-                  setProfileMenuAnchor(null);
-                  navigate('/settings');
-                }}
-                sx={{ borderRadius: 2.5, py: 1.25, px: 2, gap: 1.5, '&:hover': { bgcolor: '#eef2f7' } }}
-              >
-                <SettingsOutlinedIcon fontSize="small" sx={{ color: '#475569' }} />
-                <Typography variant="body2" sx={{ fontWeight: 600, color: '#1e293b' }}>הגדרות</Typography>
-              </MenuItem>
-              <MenuItem
-                onClick={handleLogout}
-                sx={{ borderRadius: 2.5, py: 1.25, px: 2, gap: 1.5, '&:hover': { bgcolor: '#eef2f7' } }}
-              >
-                <LogoutOutlinedIcon fontSize="small" sx={{ color: '#475569' }} />
-                <Typography variant="body2" sx={{ fontWeight: 600, color: '#1e293b' }}>יציאה</Typography>
-              </MenuItem>
-            </Box>
-          </Menu>
-        </Box>
 
         {error && (
             <Typography color="error" variant="body2" mb={1}>
@@ -365,6 +365,7 @@ export default function DashboardPage() {
               onImport={handleImport}
               onOpenPrint={() => setIsPrintModalOpen(true)}
               columnPreferences={parseColumnPreferences(user?.columnPreferences)}
+              profileMenu={profileMenu}
           />
         </Box>
 
