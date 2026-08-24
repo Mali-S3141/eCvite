@@ -30,6 +30,7 @@ const SYSTEM_FIELDS_HIDDEN_BY_DEFAULT = {
 
 // עמודות כתובת - מהן אפשר להעביר ערך שלא מתאים לעמודת "הערת כתובת" (קליק ימני על התא)
 const ADDRESS_FIELDS = ['country', 'city', 'neighborhood', 'street', 'houseNo'];
+const DEFAULT_PRINTABLE_FIELDS = new Set(['prefix', 'man', 'woman', 'lastName', 'suffix', 'street', 'houseNo', 'city', 'country']);
 
 // המיון המובנה של הטבלה (Intl.Collator() בלי locale) לא ממיין נכון לפי א'-ב' עברי -
 // collator עם locale 'he' ממיין נכון, וגם numeric:true נותן סדר טבעי למספרים (כמו במספר בית)
@@ -253,7 +254,8 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
 
   const handleAddRow = () => {
     // חלק מה-id-ים הם hashCode (מחרוזת, לא מספר) - מתעלמים מהם בחישוב המספר הבא
-    const numericIds = rows.map((row) => Number(row.id)).filter((n) => Number.isFinite(n));
+    const currentRows = rowsRef.current;
+    const numericIds = currentRows.map((row) => Number(row.id)).filter((n) => Number.isFinite(n));
     const nextId = numericIds.length ? Math.max(...numericIds) + 1 : 1;
     const newRow = {
       id: nextId,
@@ -275,32 +277,39 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
       belongsTo: '',
       print: false,
     };
-    setRows((prevRows) => [newRow, ...prevRows]);
+    const updatedRows = [newRow, ...currentRows];
+    setRows(updatedRows);
+    onAutoSave(updatedRows);
 
 
   };
 
   const handleDeleteRows = () => {
-    const updatedRows = rows.filter((row) => !selectionModel.includes(row.id));
+    const idsToDelete = selectionModel.map(String);
+    const serverIdsToDelete = rows
+      .filter((row) => idsToDelete.includes(String(row.id)) && row.hashCode !== undefined && row.hashCode !== null)
+      .map((row) => String(row.hashCode));
+    const updatedRows = rows.filter((row) => !idsToDelete.includes(String(row.id)));
     setRows(updatedRows);
     setSelectionModel([]);
     onSelectionChange([]);
     onAutoSave(updatedRows);
       console.log("ROWS AFTER DELETE:", updatedRows);
     // מחיקה מפורשת מיידית בשרת - רק השורות שבאמת סומנו ונלחצו עליהן "מחק", לא לפי השוואת רשימה
-    if (onDeleteRows) {
-      onDeleteRows(selectionModel);
+    if (onDeleteRows && serverIdsToDelete.length) {
+      onDeleteRows(serverIdsToDelete);
     }
   };
 
   // מחיקת שורה בודדת - כפתור הפח שמופיע בריחוף על שורה, בלי צורך לסמן אותה קודם
   const handleDeleteSingleRow = useCallback((id) => {
+    const rowToDelete = rowsRef.current.find((row) => String(row.id) === String(id));
     const updatedRows = rowsRef.current.filter((row) => String(row.id) !== String(id));
     setRows(updatedRows);
     setSelectionModel((prev) => prev.filter((selectedId) => String(selectedId) !== String(id)));
     onAutoSave(updatedRows);
-    if (onDeleteRows) {
-      onDeleteRows([id]);
+    if (onDeleteRows && rowToDelete?.hashCode !== undefined && rowToDelete?.hashCode !== null) {
+      onDeleteRows([String(rowToDelete.hashCode)]);
     }
   }, [onAutoSave, onDeleteRows]);
 
@@ -317,6 +326,28 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
     setRows(updatedRows);
     onAutoSave(updatedRows);
   }, [onAutoSave]);
+
+  const toggleFieldPrint = useCallback((id, field) => {
+    const updatedRows = rowsRef.current.map((row) => {
+      if (String(row.id) !== String(id)) return row;
+      const current = row.printFields?.[field] ?? DEFAULT_PRINTABLE_FIELDS.has(field);
+      return { ...row, printFields: { ...row.printFields, [field]: !current } };
+    });
+    setRows(updatedRows);
+    onAutoSave(updatedRows);
+  }, [onAutoSave]);
+
+  const renderFieldPrintToggle = useCallback((id, field, row) => (
+    <input
+      type="checkbox"
+      checked={row.printFields?.[field] ?? DEFAULT_PRINTABLE_FIELDS.has(field)}
+      aria-label={`הדפס את השדה ${field}`}
+      title="הדפס שדה זה"
+      onClick={(event) => event.stopPropagation()}
+      onChange={() => toggleFieldPrint(id, field)}
+      style={{ flexShrink: 0, marginInlineStart: 4 }}
+    />
+  ), [toggleFieldPrint]);
 
   // מעבירה את הערך מתא בעמודת כתובת (כשהוא לא מתאים) לעמודת "הערת כתובת" -
   // ומרוקנת את התא המקורי. אם כבר יש תוכן בהערת הכתובת, משרשרת אליו במקום לדרוס
@@ -345,7 +376,7 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
   // אייקון קטן שמופיע כשעוברים עם העכבר על תא בעמודת כתובת - לחיצה עליו מעבירה
   // את הערך ישירות ל"הערת כתובת", כדי שהאפשרות תהיה גלויה ולא רק דרך קליק ימני
   const renderAddressCell = useCallback((params) => {
-    const { id, field, value } = params;
+    const { id, field, value, row } = params;
     return (
       <Box
         sx={{
@@ -402,9 +433,10 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
             <SwapHorizIcon fontSize="inherit" />
           </IconButton>
         )}
+        {renderFieldPrintToggle(id, field, row)}
       </Box>
     );
-  }, [moveValueToAddressNote, updateCellValue]);
+  }, [moveValueToAddressNote, renderFieldPrintToggle, updateCellValue]);
 
   // תא טקסט חי - קלט חופשי לגמרי תמיד, ואם יש pickListField (עמודות קידומת/סיום/
   // שייך ל) גם חץ קטן לצידו שפותח Menu לבחירה מהערכים הקיימים באותה עמודה. שתי
@@ -414,7 +446,7 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
   // אחרי כל אות (בדיוק הבאג שנתקלנו בו)
   const renderTextCell = useCallback((pickListField) => {
     const TextCell = (params) => {
-      const { id, field, value } = params;
+      const { id, field, value, row } = params;
       const [menuOpen, setMenuOpen] = useState(false);
       const [menuOptions, setMenuOptions] = useState([]);
       const boxRef = useRef(null);
@@ -497,6 +529,7 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
               </Paper>
             </Popper>
           )}
+          {renderFieldPrintToggle(id, field, row)}
         </Box>
       );
     };
@@ -504,7 +537,7 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
     // אמיתי עם fiber משלו - הכרחי כי יש כאן hooks (useState/useRef) בפנים. בלעדי זה
     // ריאקט "מבלבל" בין hooks של תאים שונים (בדיוק השגיאה "Rendered more hooks...")
     return (params) => <TextCell {...params} />;
-  }, [updateCellValue]);
+  }, [renderFieldPrintToggle, updateCellValue]);
 
   // תא בוליאני חי (עמודת "הדפסה") - checkbox רגיל, בלי תלות במצב עריכה בכלל
   const renderBooleanCell = useCallback((params) => {
@@ -634,6 +667,46 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
       [fieldDefs]
   );
   const orderedFieldNames = useMemo(() => orderedFieldDefs.map((f) => f.technicalName), [orderedFieldDefs]);
+  const printableFieldNames = useMemo(
+    () => orderedFieldNames.filter((field) => field !== 'print'),
+    [orderedFieldNames]
+  );
+
+  const toggleAllRowPrintFields = useCallback((id, row) => {
+    const allSelected = printableFieldNames.every(
+      (field) => row.printFields?.[field] ?? DEFAULT_PRINTABLE_FIELDS.has(field)
+    );
+    const updatedRows = rowsRef.current.map((currentRow) => {
+      if (String(currentRow.id) !== String(id)) return currentRow;
+      const printFields = { ...currentRow.printFields };
+      printableFieldNames.forEach((field) => {
+        printFields[field] = !allSelected;
+      });
+      return { ...currentRow, printFields };
+    });
+    setRows(updatedRows);
+    onAutoSave(updatedRows);
+  }, [onAutoSave, printableFieldNames]);
+
+  const renderRowPrintSelection = useCallback((params) => {
+    const { id, row } = params;
+    const allSelected = printableFieldNames.length > 0 && printableFieldNames.every(
+      (field) => row.printFields?.[field] ?? DEFAULT_PRINTABLE_FIELDS.has(field)
+    );
+    return (
+      <Button
+        size="small"
+        variant="outlined"
+        onClick={(event) => {
+          event.stopPropagation();
+          toggleAllRowPrintFields(id, row);
+        }}
+        sx={{ minWidth: 78, px: 0.5, fontSize: '0.7rem', whiteSpace: 'nowrap' }}
+      >
+        {allSelected ? 'בטל הכול' : 'בחר הכול'}
+      </Button>
+    );
+  }, [printableFieldNames, toggleAllRowPrintFields]);
 
   // סורקת את כל השורות (לפי סדר השורות והעמודות בטבלה) ומחזירה רשימה מסודרת של
   // תאים שצריך לתקן - שדות חובה ריקים או ערכים לא תקינים - כדי לדעת לאיזה תא לקפוץ קודם
@@ -688,8 +761,18 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
       };
     });
 
-    return [...dynamicColumns, ...systemColumns];
-  }, [orderedFieldDefs, renderAddressCell, renderBooleanCell, renderTextCell, secondarySortFields]);
+    const printSelectionColumn = {
+      field: 'printSelection',
+      headerName: 'שדות להדפסה',
+      width: 100,
+      sortable: false,
+      filterable: false,
+      disableColumnMenu: true,
+      renderCell: renderRowPrintSelection,
+    };
+
+    return [printSelectionColumn, ...dynamicColumns, ...systemColumns];
+  }, [orderedFieldDefs, renderAddressCell, renderBooleanCell, renderRowPrintSelection, renderTextCell, secondarySortFields]);
 
   const handleAddSecondarySort = (field) => {
     if (!field || secondarySortFields.includes(field)) return;
@@ -901,6 +984,9 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
       </Box>
 
    <Box ref={gridContainerRef} sx={{ px: 1.5, pb: 1, pt: 0.75, maxWidth: '100%', overflowX: 'auto', position: 'relative' }}>
+     <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
+       תיבת הסימון לצד כל שדה קובעת אם ערכו יודפס במדבקה.
+     </Typography>
 
    <DataGrid
         apiRef={apiRef}

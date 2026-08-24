@@ -4,9 +4,22 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { Box, Container, Typography, Button, Paper, Stack } from '@mui/material';
 import { REAL_LABEL_SIZES, getRealColumns } from '../utils/labelSheetLayout';
 
+const DEFAULT_PRINTABLE_FIELDS = new Set(['prefix', 'man', 'woman', 'lastName', 'suffix', 'street', 'houseNo', 'city', 'country']);
+const LABEL_FIELDS = new Set(['display', 'prefix', 'man', 'woman', 'lastName', 'suffix', 'street', 'houseNo', 'city', 'country']);
+const INTERNAL_FIELDS = new Set(['id', 'hashCode', 'changed', 'changeDate', 'changeBy', 'createdBy', 'print', 'printFields']);
+
 function getDisplayName(row) {
-  if (row.display) return row.display;
-  return [row.man, row.woman ? `ו${row.woman}` : '', row.lastName].filter(Boolean).join(' ');
+  const isSelected = (field) => shouldPrintField(row, field);
+  if (row.display && row.printFields?.display === true) return row.display;
+  return [
+    isSelected('man') ? row.man : '',
+    isSelected('woman') && row.woman ? `ו${row.woman}` : '',
+    isSelected('lastName') ? row.lastName : '',
+  ].filter(Boolean).join(' ');
+}
+
+function shouldPrintField(row, field) {
+  return row.printFields?.[field] ?? DEFAULT_PRINTABLE_FIELDS.has(field);
 }
 
 // פריסת רשת אמיתית לדף מדבקות - הגדלים ומספר העמודות מגיעים מאותו מקור אמת
@@ -141,7 +154,7 @@ const { selectedRows = [], selectedItems = [], labelSize = 'standard', printer =
                   variant={layout.nameVariant}
                   sx={{ fontWeight: 'bold', mb: 0.25, color: '#000000', textAlign: 'center', fontFamily: 'inherit', lineHeight: 1.2 }}
                 >
-                  לכבוד {row.prefix || ''} {getDisplayName(row)} {row.suffix || ''}
+                  {shouldPrintField(row, 'prefix') ? 'לכבוד' : ''} {shouldPrintField(row, 'prefix') ? row.prefix || '' : ''} {getDisplayName(row)} {shouldPrintField(row, 'suffix') ? row.suffix || '' : ''}
                 </Typography>
 
                 {/* שורת הרחוב */}
@@ -149,7 +162,7 @@ const { selectedRows = [], selectedItems = [], labelSize = 'standard', printer =
                   variant={layout.addrVariant}
                   sx={{ color: '#333333', textAlign: 'center', fontFamily: 'inherit', lineHeight: 1.2 }}
                 >
-                  {row.street} {row.houseNo}
+                  {shouldPrintField(row, 'street') ? row.street : ''} {shouldPrintField(row, 'houseNo') ? row.houseNo : ''}
                 </Typography>
 
                 {/* שורת עיר וארץ - מתחת לרחוב */}
@@ -157,8 +170,20 @@ const { selectedRows = [], selectedItems = [], labelSize = 'standard', printer =
                   variant={layout.addrVariant}
                   sx={{ color: '#333333', textAlign: 'center', fontFamily: 'inherit', lineHeight: 1.2 }}
                 >
-                  {row.city} {row.country || ''}
+                  {shouldPrintField(row, 'city') ? row.city : ''} {shouldPrintField(row, 'country') ? row.country || '' : ''}
                 </Typography>
+
+                {Object.keys(row.printFields || {})
+                  .filter((field) => !LABEL_FIELDS.has(field) && !INTERNAL_FIELDS.has(field) && shouldPrintField(row, field) && row[field] !== undefined && row[field] !== null && row[field] !== '')
+                  .map((field) => (
+                    <Typography
+                      key={field}
+                      variant={layout.addrVariant}
+                      sx={{ color: '#333333', textAlign: 'center', fontFamily: 'inherit', lineHeight: 1.2 }}
+                    >
+                      {String(row[field])}
+                    </Typography>
+                  ))}
               </Box>
             ))}
           </Box>
