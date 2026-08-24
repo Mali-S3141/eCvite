@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Dialog,
   DialogTitle,
@@ -11,6 +12,7 @@ import {
   Box,
   IconButton,
   Collapse,
+  Link,
 } from '@mui/material';
 import VisibilityIcon from '@mui/icons-material/Visibility';
 
@@ -32,6 +34,7 @@ function getSampleValues(rows, header, limit = 5) {
 // מסך שמופיע כשיש עמודות בקובץ ה-Excel שלא זוהו אוטומטית - המשתמשת בוחרת ידנית
 // לאיזה שדה כל עמודה שייכת (או להתעלם ממנה), והבחירה נשמרת מיד כ"כינוי" חדש לפעם הבאה
 export default function ColumnMatchDialog({ open, unmatchedHeaders, headerLabels = {}, columns, rows, onConfirm, onCancel }) {
+  const navigate = useNavigate();
   const [choices, setChoices] = useState({});
   const [expandedHeader, setExpandedHeader] = useState(null);
 
@@ -89,6 +92,15 @@ export default function ColumnMatchDialog({ open, unmatchedHeaders, headerLabels
             </Box>
           );
         })}
+        <Link
+          component="button"
+          type="button"
+          variant="body2"
+          onClick={() => navigate('/settings')}
+          sx={{ display: 'block', mt: 1 }}
+        >
+          להגדרות נוספות על העמודות
+        </Link>
       </DialogContent>
       <DialogActions>
         <Button onClick={onCancel}>ביטול</Button>
