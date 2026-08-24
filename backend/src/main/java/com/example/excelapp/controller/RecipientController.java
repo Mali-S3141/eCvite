@@ -9,6 +9,7 @@ import com.example.excelapp.dto.DeleteRecipientsRequest;
 import com.example.excelapp.repository.UserRecipientsRepository;
 import com.example.excelapp.repository.UserRepository;
 import com.example.excelapp.service.ExcelService;
+import com.example.excelapp.service.ActivityLogService;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
@@ -31,6 +32,7 @@ public class RecipientController {
     private final RecipientsRepository recipientRepository;
     private final UserRecipientsRepository userRecipientsRepository;
     private final UserRepository userRepository;
+    private final ActivityLogService activityLogService;
 
     @Autowired
     private ExcelService excelService;
@@ -39,11 +41,13 @@ public class RecipientController {
     public RecipientController(
             RecipientsRepository recipientRepository,
             UserRecipientsRepository userRecipientsRepository,
-            UserRepository userRepository
+            UserRepository userRepository,
+            ActivityLogService activityLogService
     ) {
         this.recipientRepository = recipientRepository;
         this.userRecipientsRepository = userRecipientsRepository;
         this.userRepository = userRepository;
+        this.activityLogService = activityLogService;
     }
 
 
@@ -121,6 +125,8 @@ public class RecipientController {
         if (!links.isEmpty()) {
             userRecipientsRepository.saveAll(links);
         }
+
+        activityLogService.log(request.getPhone(), "RECIPIENTS_SAVED", "Recipient rows submitted: " + incoming.size());
 
         return ResponseEntity.ok().build();
     }
@@ -224,6 +230,8 @@ public class RecipientController {
 
         userRecipientsRepository.saveAll(links);
 
+        activityLogService.log(request.getPhone(), "RECIPIENTS_IMPORTED", "Recipient rows imported: " + request.getRecipients().size());
+
 
         return ResponseEntity.ok(
                 savedRecipients
@@ -255,6 +263,8 @@ public class RecipientController {
                 userRecipientsRepository.findByUserAndRecipient_HashCodeIn(user, hashCodes);
 
         userRecipientsRepository.deleteAll(linksToDelete);
+
+        activityLogService.log(request.getPhone(), "RECIPIENTS_DELETED", "Recipient links removed: " + linksToDelete.size());
 
         return ResponseEntity.ok().build();
     }
