@@ -101,9 +101,25 @@ export default function SettingsPage() {
         >
           <ArrowForwardIcon />
         </IconButton>
-        <Typography variant="h5" sx={{ fontWeight: 700, color: '#0f172a' }}>
-          {view === 'menu' ? 'הגדרות' : 'ניהול עמודות'}
-        </Typography>
+        {view === 'menu' ? (
+          <Typography variant="h5" sx={{ fontWeight: 700, color: '#0f172a' }}>
+            הגדרות
+          </Typography>
+        ) : (
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <Typography
+              variant="h5"
+              onClick={() => setView('menu')}
+              sx={{ fontWeight: 500, color: '#94a3b8', cursor: 'pointer', '&:hover': { color: '#0f172a' } }}
+            >
+              הגדרות
+            </Typography>
+            <Typography variant="h5" sx={{ color: '#94a3b8' }}>‹</Typography>
+            <Typography variant="h5" sx={{ fontWeight: 700, color: '#0f172a' }}>
+              ניהול עמודות
+            </Typography>
+          </Box>
+        )}
       </Box>
 
       {view === 'menu' && (
