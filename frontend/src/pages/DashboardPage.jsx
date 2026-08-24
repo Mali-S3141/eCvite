@@ -386,8 +386,10 @@ export default function DashboardPage() {
     try {
       console.log("2. שולח לבקאנד:", updatedRows);
 
+      // The hashCode is the stable identity of an existing recipient.  Keep it so the
+      // backend updates that row instead of creating a second recipient.
       const cleanRows = updatedRows.map(
-          ({ id, hashCode, printFields, ...rest }) => rest
+          ({ id, printFields, ...rest }) => rest
       );
 
       console.log("2. שולח לבקאנד אחרי ניקוי:", cleanRows);
@@ -398,17 +400,20 @@ export default function DashboardPage() {
         recipients: cleanRows
       });
 
-      const response = await api.saveRecords(
-          user.phone,
-          cleanRows
-      );
-
       const hashCodesToDelete = [...pendingDeletedHashCodes.current];
       if (hashCodesToDelete.length) {
         await api.deleteRecipients(user.phone, hashCodesToDelete);
         pendingDeletedHashCodes.current.clear();
         clearPendingDeletedHashCodes(user.phone);
       }
+
+      // Delete first: if a user deletes and then re-adds the same recipient in one
+      // save operation, saving first would relink the old record only for the later
+      // delete to remove that new link.
+      const response = await api.saveRecords(
+          user.phone,
+          cleanRows
+      );
 
 
 

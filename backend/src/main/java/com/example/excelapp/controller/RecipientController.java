@@ -20,6 +20,7 @@ import org.springframework.web.multipart.MultipartFile;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -86,21 +87,21 @@ public class RecipientController {
         Map<String, Recipients> existingByHash = recipientRepository.findAllById(hashCodes).stream()
                 .collect(Collectors.toMap(Recipients::getHashCode, r -> r));
 
-        List<Recipients> toInsert = new ArrayList<>();
-        List<Recipients> savedRecipients = new ArrayList<>();
+        List<Recipients> toSave = new ArrayList<>();
         Set<String> seen = new HashSet<>();
         for (Recipients r : incoming) {
             if (!seen.add(r.getHashCode())) continue; // כפילות בתוך אותה בקשה
             Recipients existing = existingByHash.get(r.getHashCode());
             if (existing != null) {
-                savedRecipients.add(existing);
-            } else {
-                toInsert.add(r);
+                // A row that carries an existing hashCode is an edit, not a duplicate.
+                // Preserve the accumulated "belongs to" values while applying all other edits.
+                r.setBelongsTo(mergeBelongsTo(existing.getBelongsTo(), r.getBelongsTo()));
             }
+            toSave.add(r);
         }
-        if (!toInsert.isEmpty()) {
-            savedRecipients.addAll(recipientRepository.saveAll(toInsert));
-        }
+        List<Recipients> savedRecipients = toSave.isEmpty()
+                ? List.of()
+                : recipientRepository.saveAll(toSave);
 
         // שאילתה אחת שמביאה רק את ה-hash-ים הקיימים (לא את הישויות המלאות - זה היה
         // גורם ל-N+1 שאילתות, אחת לכל recipient בנפרד, כי ManyToOne ברירת מחדל הוא eager)
@@ -128,7 +129,20 @@ public class RecipientController {
 
         activityLogService.log(request.getPhone(), "RECIPIENTS_SAVED", "Recipient rows submitted: " + incoming.size());
 
-        return ResponseEntity.ok().build();
+        return ResponseEntity.ok(savedRecipients);
+    }
+
+    private String mergeBelongsTo(String existing, String incoming) {
+        Set<String> values = new LinkedHashSet<>();
+        for (String part : (existing == null ? "" : existing).split(",")) {
+            String trimmed = part.trim();
+            if (!trimmed.isEmpty()) values.add(trimmed);
+        }
+        for (String part : (incoming == null ? "" : incoming).split(",")) {
+            String trimmed = part.trim();
+            if (!trimmed.isEmpty()) values.add(trimmed);
+        }
+        return String.join(", ", values);
     }
 
 
