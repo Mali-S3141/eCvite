@@ -1,5 +1,5 @@
 // src/components/PrintModal.jsx
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Modal, Box, Typography, Button, RadioGroup, FormControlLabel, Radio, FormControl, InputLabel, Select, MenuItem, Stack, Divider } from '@mui/material';
 import { useNavigate } from 'react-router-dom';
 // 🌟 ייבוא הקבועים החדשים מהעמוד הייעודי
@@ -102,11 +102,21 @@ function LabelSheetPreview({ labelSize }) {
   );
 }
 
-export default function PrintModal({ open, onClose, selectedRows, records = [] }) {
+export default function PrintModal({ open, onClose, selectedRows = [], filteredRows = [], records = [] }) {
   const navigate = useNavigate();
 
-  // אם לא סימנו אף שורה - מדפיסים את כולן, במקום לא להדפיס כלום
-  const rowsToPrint = selectedRows.length > 0 ? selectedRows : records;
+  const [printScope, setPrintScope] = useState('all');
+
+  useEffect(() => {
+    if (!open) return;
+    setPrintScope(selectedRows.length > 0 ? 'selected' : filteredRows.length > 0 ? 'filtered' : 'all');
+  }, [open, selectedRows.length, filteredRows.length]);
+
+  const rowsToPrint = printScope === 'selected'
+    ? selectedRows
+    : printScope === 'filtered'
+    ? filteredRows
+    : records;
   
   // 1. בדיקה בטוחה עבור השלב (Step)
   const [step, setStep] = useState(() => {
@@ -217,6 +227,26 @@ export default function PrintModal({ open, onClose, selectedRows, records = [] }
             <Stack direction="row" spacing={3} alignItems="stretch">
               <Stack spacing={3} sx={{ flex: 1 }}>
                 <FormControl fullWidth>
+                  <InputLabel id="print-scope-label">רשומות להדפסה</InputLabel>
+                  <Select
+                    labelId="print-scope-label"
+                    value={printScope}
+                    label="רשומות להדפסה"
+                    onChange={(event) => setPrintScope(event.target.value)}
+                  >
+                    <MenuItem value="selected" disabled={selectedRows.length === 0}>
+                      רשומות שסומנו בטבלה ({selectedRows.length})
+                    </MenuItem>
+                    <MenuItem value="filtered" disabled={filteredRows.length === 0}>
+                      רק הרשומות המוצגות לפי הסינון ({filteredRows.length})
+                    </MenuItem>
+                    <MenuItem value="all" disabled={records.length === 0}>
+                      כל הרשומות ({records.length})
+                    </MenuItem>
+                  </Select>
+                </FormControl>
+
+                <FormControl fullWidth>
                   <InputLabel id="font-label">{MODAL_TEXTS.FONT_INPUT_LABEL}</InputLabel>
                   <Select
                     labelId="font-label"
@@ -286,8 +316,8 @@ export default function PrintModal({ open, onClose, selectedRows, records = [] }
             <Stack direction="row" spacing={1} justifyContent="space-between" mt={4}>
               <Button onClick={() => setStep(1)} color="inherit">{MODAL_TEXTS.BUTTON_BACK}</Button>
               <Stack direction="row" spacing={1}>
-                <Button variant="outlined" onClick={handlePreview} disabled={labelSize === 'large'}>{MODAL_TEXTS.BUTTON_PREVIEW}</Button>
-                <Button variant="contained" onClick={handlePrint} color="success" disabled={labelSize === 'large'}>{MODAL_TEXTS.BUTTON_PRINT}</Button>
+                <Button variant="outlined" onClick={handlePreview} disabled={labelSize === 'large' || rowsToPrint.length === 0}>{MODAL_TEXTS.BUTTON_PREVIEW}</Button>
+                <Button variant="contained" onClick={handlePrint} color="success" disabled={labelSize === 'large' || rowsToPrint.length === 0}>{MODAL_TEXTS.BUTTON_PRINT}</Button>
               </Stack>
             </Stack>
           </Box>

@@ -1,6 +1,5 @@
 import { useEffect, useCallback, useRef, useState } from 'react';
-import { Accordion, AccordionDetails, AccordionSummary, Box, Button, List, ListItem, ListItemText, Typography } from '@mui/material';
-import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
+import { Box, Button, Typography } from '@mui/material';
 import DataTable from '../components/DataTable';
 import api from '../services/api';
 import PrintModal from '../components/PrintModal'; // ייבוא המודאל החדש
@@ -140,14 +139,22 @@ export default function DashboardPage() {
   const [error, setError] = useState('');
   const user = getLoggedUser();
   const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
-  const [selectedRows, setSelectedRows] = useState([]); // 🌟 רק הגדרה אחת, נקייה ותקינה!
+  const [printSources, setPrintSources] = useState({ selectedRows: [], filteredRows: [], allRows: [] });
   const [isTableDirty, setIsTableDirty] = useState(false);
-  const [activityLogs, setActivityLogs] = useState([]);
   const hasTrackedDashboardVisit = useRef(false);
   const pendingDeletedHashCodes = useRef(getPendingDeletedHashCodes(user?.phone));
   const recordsRef = useRef(records);
   const undoStackRef = useRef([]);
   const isApplyingUndo = useRef(false);
+
+  const trackActivity = useCallback(async (action, details = '') => {
+    if (!user?.phone) return;
+    try {
+      await api.createActivityLog(user.phone, action, details.slice(0, 500));
+    } catch (err) {
+      console.warn('Unable to save activity log', err);
+    }
+  }, [user?.phone]);
 
   useEffect(() => {
     recordsRef.current = records;
@@ -190,30 +197,11 @@ export default function DashboardPage() {
     } catch (err) {
       setError('לא ניתן לטעון רשומות מהמנוע האחורי. עובד במצב לא מקוון.');
       setRecords(getLocalRecords(user.phone));
+      trackActivity('RECIPIENTS_LOAD_FAILED', `Reason: ${err.message || 'Network request failed'}`);
     } finally {
       setLoading(false);
     }
-  }, [user?.phone]);
-
-  const loadActivityLogs = useCallback(async () => {
-    if (!user?.phone) return;
-    try {
-      const response = await api.getActivityLogs(user.phone);
-      setActivityLogs(response.data);
-    } catch (err) {
-      console.warn('Unable to load activity logs', err);
-    }
-  }, [user?.phone]);
-
-  const trackActivity = useCallback(async (action, details = '') => {
-    if (!user?.phone) return;
-    try {
-      await api.createActivityLog(user.phone, action, details);
-      await loadActivityLogs();
-    } catch (err) {
-      console.warn('Unable to save activity log', err);
-    }
-  }, [loadActivityLogs, user?.phone]);
+  }, [trackActivity, user?.phone]);
 
   useEffect(() => {
     const returnFromPreview = sessionStorage.getItem('returnFromPreview');
@@ -230,12 +218,11 @@ export default function DashboardPage() {
   }, [loadRecords, user?.phone]);
 
   useEffect(() => {
-    loadActivityLogs();
     if (user?.phone && !hasTrackedDashboardVisit.current) {
       hasTrackedDashboardVisit.current = true;
       trackActivity('DASHBOARD_OPENED');
     }
-  }, [loadActivityLogs, trackActivity, user?.phone]);
+  }, [trackActivity, user?.phone]);
 
   // 🌟 פותח את המודאל אוטומטית אם המשתמש לחץ על "שינוי הגדרות" בתצוגה המקדימה
   useEffect(() => {
@@ -306,11 +293,6 @@ export default function DashboardPage() {
     isApplyingUndo.current = true;
     saveLocalRecords(user.phone, previousRows);
     setRecords(previousRows);
-    setSelectedRows((currentSelectedRows) =>
-      currentSelectedRows.filter((selectedRow) =>
-        previousRows.some((row) => String(row.id) === String(selectedRow.id))
-      )
-    );
     setIsTableDirty(true);
     setTimeout(() => {
       isApplyingUndo.current = false;
@@ -368,11 +350,10 @@ export default function DashboardPage() {
 
       saveLocalRecords(user.phone, updatedRows);
       setRecords(updatedRows);
-      await loadActivityLogs();
-
     } catch (err) {
       console.error('❌ שגיאה במחיקת הרשומות:', err);
       setError('לא ניתן למחוק את הרשומות מהשרת.');
+      trackActivity('RECIPIENTS_DELETE_FAILED', `Reason: ${err.message || 'Delete failed'}`);
     }
   };
   const handleSave = async (updatedRows) => {
@@ -428,9 +409,6 @@ export default function DashboardPage() {
      setIsTableDirty(false);
 
       await loadRecords();
-      await loadActivityLogs();
-
-
     } catch (err) {
 
       console.error("❌ שגיאה בשליחה לבקאנד:", err);
@@ -438,6 +416,7 @@ export default function DashboardPage() {
       setError(
           'לא ניתן לשמור רשומות לשרת. השמירה תבצע באופן מקומי.'
       );
+      trackActivity('RECIPIENTS_SAVE_FAILED', `Reason: ${err.message || 'Save failed'}`);
 
       saveLocalRecords(user.phone, updatedRows);
     }
@@ -448,22 +427,25 @@ export default function DashboardPage() {
   const handleImport = (rows) => {
     // onImport נקרא לפעמים עם מערך שורות ולפעמים עם { rows, columns } - תלוי בנתיב
     // בתוך ExcelImport - שני המבנים קיימים היום בפועל
-    const importedRows = Array.isArray(rows) ? rows : rows?.rows ?? [];
-    if (!importedRows.length || !user?.phone) return;
+    try {
+      const importedRows = Array.isArray(rows) ? rows : rows?.rows ?? [];
+      if (!importedRows.length || !user?.phone) return;
 
-    // אותה שיטת מזהה זמני כמו "הוסף שורה" בטבלה - שורות מיובאות עוד לא נשמרו בשרת
-    // אז אין להן hashCode, וצריך id ייחודי כלשהו כדי שה-DataGrid יוכל להציג אותן
-    const numericIds = records.map((r) => Number(r.id)).filter((n) => Number.isFinite(n));
-    let nextId = numericIds.length ? Math.max(...numericIds) + 1 : 1;
-    const rowsWithIds = importedRows.map((row) => ({
-      ...row,
-      id: row.id ?? nextId++,
-      printFields: createUnselectedPrintFields(row),
-    }));
+      const numericIds = records.map((r) => Number(r.id)).filter((n) => Number.isFinite(n));
+      let nextId = numericIds.length ? Math.max(...numericIds) + 1 : 1;
+      const rowsWithIds = importedRows.map((row) => ({
+        ...row,
+        id: row.id ?? nextId++,
+        printFields: createUnselectedPrintFields(row),
+      }));
 
-    handleAutoSaveLocal([...rowsWithIds, ...records]);
-    trackActivity('EXCEL_IMPORTED_TO_TABLE', `Rows added to table: ${rowsWithIds.length}`);
-    setError('');
+      handleAutoSaveLocal([...rowsWithIds, ...records]);
+      trackActivity('EXCEL_IMPORTED_TO_TABLE', `Rows added to table: ${rowsWithIds.length}`);
+      setError('');
+    } catch (err) {
+      setError('לא ניתן לייבא את הקובץ לטבלה.');
+      trackActivity('EXCEL_IMPORT_FAILED', `Reason: ${err.message || 'Import failed'}`);
+    }
   };
 
   const handleLogout = async () => {
@@ -472,19 +454,6 @@ export default function DashboardPage() {
     window.location.href = '/login';
   };
 
-  const formatActivityLog = (entry) => {
-    const labels = {
-      DASHBOARD_OPENED: 'נפתחה לוח הבקרה',
-      LOGGED_OUT: 'בוצעה יציאה מהמערכת',
-      EXCEL_IMPORTED_TO_TABLE: 'יובא קובץ Excel לטבלה',
-      RECIPIENTS_SAVED: 'נשמרו נמענים',
-      RECIPIENTS_IMPORTED: 'יובאו נמענים',
-      RECIPIENTS_DELETED: 'נמחקו נמענים',
-      PRINT_MODAL_OPENED: 'נפתח מסך הדפסה',
-    };
-    const date = entry.createdAt ? new Date(entry.createdAt).toLocaleString('he-IL') : '';
-    return { title: labels[entry.action] || entry.action, secondary: [entry.details, date].filter(Boolean).join(' | ') };
-  };
   const getGreeting = () => {
     const hour = new Date().getHours();
 
@@ -541,13 +510,14 @@ export default function DashboardPage() {
             loading={loading}
             onSave={handleSave}
             onAutoSave={handleAutoSaveLocal}
-            onSelectionChange={setSelectedRows}
             onDeleteRows={handleDeleteRows}
+            onActivityFailure={trackActivity}
             initialSelectedIds={initialSelectedIds}
             onImport={handleImport}
-            onOpenPrint={() => {
+            onOpenPrint={(sources) => {
+              setPrintSources(sources);
               setIsPrintModalOpen(true);
-              trackActivity('PRINT_MODAL_OPENED', `Selected rows: ${selectedRows.length}`);
+              trackActivity('PRINT_MODAL_OPENED', `Selected rows: ${sources.selectedRows.length}`);
             }}
         />
 
@@ -555,30 +525,10 @@ export default function DashboardPage() {
         <PrintModal
             open={isPrintModalOpen}
             onClose={() => setIsPrintModalOpen(false)}
-            selectedRows={selectedRows}
-            records={records}
+            selectedRows={printSources.selectedRows}
+            filteredRows={printSources.filteredRows}
+            records={printSources.allRows}
         />
 
-        <Accordion sx={{ mt: 2 }}>
-          <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-            <Typography fontWeight={700}>יומן פעילות ({activityLogs.length})</Typography>
-          </AccordionSummary>
-          <AccordionDetails>
-            {activityLogs.length === 0 ? (
-              <Typography color="text.secondary">עדיין לא נרשמה פעילות.</Typography>
-            ) : (
-              <List dense disablePadding>
-                {activityLogs.map((entry) => {
-                  const log = formatActivityLog(entry);
-                  return (
-                    <ListItem key={entry.id} disableGutters>
-                      <ListItemText primary={log.title} secondary={log.secondary} />
-                    </ListItem>
-                  );
-                })}
-              </List>
-            )}
-          </AccordionDetails>
-        </Accordion>
       </Box>
   );}

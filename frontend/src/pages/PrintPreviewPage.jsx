@@ -4,7 +4,8 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { Box, Container, Typography, Button, Paper, Stack } from '@mui/material';
 import { REAL_LABEL_SIZES, getRealColumns } from '../utils/labelSheetLayout';
 
-const DEFAULT_PRINTABLE_FIELDS = new Set(['prefix', 'man', 'woman', 'lastName', 'suffix', 'street', 'houseNo', 'city', 'country']);
+// Match the table: fields are printed only after the user explicitly selects them.
+const DEFAULT_PRINTABLE_FIELDS = new Set();
 const LABEL_FIELDS = new Set(['display', 'prefix', 'man', 'woman', 'lastName', 'suffix', 'street', 'houseNo', 'city', 'country']);
 const INTERNAL_FIELDS = new Set(['id', 'hashCode', 'changed', 'changeDate', 'changeBy', 'createdBy', 'print', 'printFields']);
 
