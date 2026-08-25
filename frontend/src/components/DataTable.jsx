@@ -5,6 +5,8 @@ import CloseIcon from '@mui/icons-material/Close';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import LocalPrintshopOutlinedIcon from '@mui/icons-material/LocalPrintshopOutlined';
 import FileDownloadOutlinedIcon from '@mui/icons-material/FileDownloadOutlined';
+import ArrowUpwardIcon from '@mui/icons-material/ArrowUpward';
+import ArrowDownwardIcon from '@mui/icons-material/ArrowDownward';
 import { DataGrid, useGridApiRef } from '@mui/x-data-grid';
 import { getExcelColumns } from '../services/excelColumnsCache';
 import ExcelImport from './ExcelImport';
@@ -79,7 +81,63 @@ function createTextSortComparator(field, secondaryFields) {
   };
 }
 
-export default function DataTable({ records, loading, onSave, onAutoSave, onSelectionChange, onDeleteRows, initialSelectedIds, onImport, onOpenPrint, columnPreferences }) {
+// כותרת עמודה מותאמת אישית: מיון קורה רק בלחיצה על חץ המיון הקטן (לא בכל מקום
+// בכותרת, כמו שהיה בברירת המחדל של הרכיב) - ודאבל-קליק על שם העמודה "משחרר" אותה
+// לגרירה, כדי לסדר מחדש את מיקום העמודות. הרחבה/הצרה נעשית ע"י גרירת הקו הדק שבצד
+// העמודה. שתי התכונות (גרירה וסידור, הרחבה) לא קיימות בגרסה החינמית של ה-DataGrid
+// (הן פיצ'ר בתשלום, Pro) ולכן נבנו כאן ידנית מאפס
+function ColumnHeader({
+  headerName,
+  field,
+  sortDirection,
+  onSortClick,
+  isDragArmed,
+}) {
+  return (
+    <Box sx={{ display: 'flex', alignItems: 'center', width: '100%', height: '100%', position: 'relative', zIndex: 2, pr: '24px' }}>
+      <Typography
+        noWrap
+        data-column-title="true"
+        sx={{
+          fontWeight: 700,
+          color: '#4b5563',
+          fontFamily: '"Rubik", "Segoe UI", Arial, sans-serif',
+          letterSpacing: '0.01em',
+          fontSize: 'inherit',
+          cursor: isDragArmed ? 'grabbing' : 'grab',
+          bgcolor: isDragArmed ? '#eff6ff' : 'transparent',
+          borderRadius: 1,
+          px: 0.5,
+          flex: 1,
+          minWidth: 0,
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+        }}
+      >
+        {headerName}
+      </Typography>
+      <IconButton
+        size="small"
+        data-sort-icon="true"
+        onClick={(event) => {
+          event.stopPropagation();
+          onSortClick(field);
+        }}
+        sx={{ p: 0.25, flexShrink: 0 }}
+      >
+        {sortDirection === 'asc' ? (
+          <ArrowUpwardIcon sx={{ fontSize: 14 }} />
+        ) : sortDirection === 'desc' ? (
+          <ArrowDownwardIcon sx={{ fontSize: 14 }} />
+        ) : (
+          <ArrowUpwardIcon sx={{ fontSize: 14, opacity: 0.25 }} />
+        )}
+      </IconButton>
+    </Box>
+  );
+}
+
+export default function DataTable({ records, loading, onSave, onAutoSave, onSelectionChange, onDeleteRows, initialSelectedIds, onImport, onOpenPrint, columnPreferences, profileMenu, onColumnOrderChange }) {
   const [rows, setRows] = useState(records);
   const [selectionModel, setSelectionModel] = useState(initialSelectedIds || []);
   const [sortModel, setSortModel] = useState([]);
@@ -93,6 +151,15 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
   const [contextMenu, setContextMenu] = useState(null); // { mouseX, mouseY, id, field } - קליק ימני על תא כתובת
   const [exportMenuAnchor, setExportMenuAnchor] = useState(null); // כפתור "יצוא" - תפריט הדפסת מדבקות / הורדת קובץ
   const [secondarySortFields, setSecondarySortFields] = useState([]); // תת-מיון: שרשרת עמודות לשבירת שוויון, לפי בחירת המשתמשת
+  const [columnOrder, setColumnOrder] = useState(null); // null = סדר ברירת המחדל (defaultOrder) - אחרת מערך שמות שדות בסדר שהמשתמשת גררה
+  const [columnWidths, setColumnWidths] = useState({}); // technicalName -> רוחב בפיקסלים, רק לעמודות שהורחבו/צומצמו ידנית
+  const [dragArmedField, setDragArmedField] = useState(null); // איזו עמודה "משוחררת" לגרירה אחרי דאבל-קליק על הכותרת שלה
+  const dragTrackingRef = useRef(null); // { field, startX, startY, moved } בזמן גרירת עמודה לסידור מחדש
+  const resizingRef = useRef(null); // { field, startX, startWidth } בזמן גרירת קו ההרחבה
+  const onColumnOrderChangeRef = useRef(onColumnOrderChange);
+  useEffect(() => {
+    onColumnOrderChangeRef.current = onColumnOrderChange;
+  }, [onColumnOrderChange]);
   const appliedInitialSelection = useRef(false);
   const apiRef = useGridApiRef();
   // ה-columns מחושבות רק פעם אחת (memo תלוי ב-fieldDefs) והפעולות שבתוכן (renderCell)
@@ -876,6 +943,169 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
   );
   const orderedFieldNames = useMemo(() => orderedFieldDefs.map((f) => f.technicalName), [orderedFieldDefs]);
 
+  // הסדר החזותי בפועל של העמודות בטבלה: בפעם הראשונה - הסדר שהמשתמשת שמרה בעבר
+  // (columnPreferences.__order), אם יש כזה, אחרת ברירת המחדל (orderedFieldNames).
+  // מהפעם השנייה ואילך columnOrder (מה-state) גובר. משמש רק לבניית columns למטה -
+  // לא נוגע בסדר שמשמש את "קפיצה לתא הבעייתי הבא" או את רשימת הבחירה בתיבת המיון,
+  // כדי לא לשנות התנהגות קיימת של תכונות אחרות
+  useEffect(() => {
+    if (orderedFieldNames.length === 0) return;
+    setColumnOrder((prev) => {
+      const base = prev ?? columnPreferences?.__order ?? orderedFieldNames;
+      const stillValid = base.filter((f) => orderedFieldNames.includes(f));
+      const missing = orderedFieldNames.filter((f) => !stillValid.includes(f));
+      if (prev && stillValid.length === prev.length && missing.length === 0) return prev;
+      return [...stillValid, ...missing];
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [orderedFieldNames]);
+
+  const displayFieldDefs = useMemo(() => {
+    if (!columnOrder) return orderedFieldDefs;
+    return columnOrder
+      .map((name) => fieldDefs.find((f) => f.technicalName === name))
+      .filter(Boolean);
+  }, [columnOrder, fieldDefs, orderedFieldDefs]);
+
+  // חץ המיון בכותרת: אם העמודה כבר המיון הראשי - מחזור רגיל (עולה -> יורד -> בטל).
+  // אחרת, אותה לוגיקה בדיוק כמו בחירה מתיבת "מיון" (ר' handleAddSortField למטה) -
+  // אם אין עדיין מיון ראשי זה הופך להיות הוא, אחרת מצטרף כתת-מיון (שובר שוויון)
+  const handleHeaderSortClick = (field) => {
+    if (sortModel[0]?.field === field) {
+      setSortModel(sortModel[0].sort === 'asc' ? [{ field, sort: 'desc' }] : []);
+      return;
+    }
+    handleAddSortField(field);
+  };
+
+  // גרירת עמודה לסידור מחדש - תנועה אחת רציפה (לוחצים, גוררים בלי לשחרר, משחררים
+  // ביעד), בלי שלב "בחירה" נפרד קודם. לחיצה בלי תזוזה ממשית (מעל סף קטן) לא נחשבת
+  // גרירה בכלל, כדי שקליק רגיל על הכותרת לא יזיז שום דבר בטעות.
+  // מחוברת פעם אחת בלבד (useEffect עם [] תלות, ר' למטה) ישירות ל-document, ולא דרך
+  // onMouseDown על הכותרת המותאמת אישית עצמה - כי כותרות ה-DataGrid מתחדשות (renderHeader
+  // נקרא מחדש) בכל שינוי state, ולפעמים ה-listener על הכותרת לא הספיק להתחבר מחדש
+  // בזמן ללחיצה הבאה, מה שגרם לפעמים שגרירה לא נתפסה בכלל
+  const orderedFieldNamesRef = useRef(orderedFieldNames);
+  useEffect(() => {
+    orderedFieldNamesRef.current = orderedFieldNames;
+  }, [orderedFieldNames]);
+
+  useEffect(() => {
+    const DRAG_MOVE_THRESHOLD_PX = 6;
+
+    const handleGlobalMouseDown = (event) => {
+      // תופסים את כל תא הכותרת כברירת מחדל לגרירה (לא רק את הטקסט של השם) - כדי לא
+      // להיתקל בבעיות חפיפה עדינות בין רכיבים פנימיים של הרשת (למשל קו ההרחבה, שיש
+      // לו z-index גבוה מאוד ברירת מחדל, MUI) - ומוציאים מזה במפורש רק את הבקרות
+      // הידועות שכן צריכות להתנהג אחרת: חץ המיון, תפריט העמודה, וקו ההרחבה עצמו
+      const headerEl = event.target.closest ? event.target.closest('.MuiDataGrid-columnHeader[data-field]') : null;
+      if (!headerEl) return;
+      const isExcluded = event.target.closest(
+        '[data-sort-icon="true"], .MuiDataGrid-menuIcon, .MuiDataGrid-columnSeparator, .MuiDataGrid-checkboxInput'
+      );
+      if (isExcluded) return;
+      const field = headerEl.getAttribute('data-field');
+      if (!field) return;
+
+      event.preventDefault();
+      const startX = event.clientX;
+      const startY = event.clientY;
+      dragTrackingRef.current = { field, startX, startY, moved: false };
+
+      const handleMouseMove = (moveEvent) => {
+        const tracking = dragTrackingRef.current;
+        if (!tracking || tracking.moved) return;
+        const dx = moveEvent.clientX - tracking.startX;
+        const dy = moveEvent.clientY - tracking.startY;
+        if (Math.abs(dx) > DRAG_MOVE_THRESHOLD_PX || Math.abs(dy) > DRAG_MOVE_THRESHOLD_PX) {
+          tracking.moved = true;
+          setDragArmedField(field);
+        }
+      };
+
+      const handleMouseUp = (upEvent) => {
+        document.removeEventListener('mousemove', handleMouseMove);
+        document.removeEventListener('mouseup', handleMouseUp);
+        const tracking = dragTrackingRef.current;
+        dragTrackingRef.current = null;
+        setDragArmedField(null);
+        if (!tracking || !tracking.moved) return; // לחיצה רגילה, לא גרירה בפועל - לא מזיזים כלום
+
+        const sourceField = tracking.field;
+        const targetEl = document.elementFromPoint(upEvent.clientX, upEvent.clientY);
+        const targetHeaderEl = targetEl?.closest('.MuiDataGrid-columnHeader');
+        const targetField = targetHeaderEl?.getAttribute('data-field');
+        if (!targetField || sourceField === targetField) return;
+
+        // איפה בדיוק שחררו את העמודה ביחס לעמודת היעד קובע אם להכניס לפניה או אחריה -
+        // כדי שאפשר יהיה להזיז לשני הכיוונים (כולל "להחזיר אחורה" עמודה שכבר הוזזה),
+        // לא רק "תמיד לפני"
+        const targetRect = targetHeaderEl.getBoundingClientRect();
+        const dropInRightHalf = upEvent.clientX > targetRect.left + targetRect.width / 2;
+
+        setColumnOrder((prev) => {
+          const base = prev ?? orderedFieldNamesRef.current;
+          const withoutSource = base.filter((f) => f !== sourceField);
+          const targetIndex = withoutSource.indexOf(targetField);
+          if (targetIndex === -1) return base;
+          const insertIndex = dropInRightHalf ? targetIndex : targetIndex + 1;
+          const newOrder = [...withoutSource.slice(0, insertIndex), sourceField, ...withoutSource.slice(insertIndex)];
+          onColumnOrderChangeRef.current?.(newOrder);
+          return newOrder;
+        });
+      };
+
+      document.addEventListener('mousemove', handleMouseMove);
+      document.addEventListener('mouseup', handleMouseUp);
+    };
+
+    document.addEventListener('mousedown', handleGlobalMouseDown);
+    return () => document.removeEventListener('mousedown', handleGlobalMouseDown);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // הרחבה/הצרה של עמודה - גוררים את הקו הדק שבצד העמודה. מתחילים מהרוחב האמיתי
+  // הנוכחי (נקרא מה-DOM בפעם הראשונה, כי עד עכשיו הרוחב נקבע לפי flex ולא נשמר במקום
+  // אחר) כדי שההרחבה הראשונה לא "תקפוץ" לרוחב אחר בטעות
+  const handleResizeStart = (event, field) => {
+    event.preventDefault();
+    event.stopPropagation();
+    const startWidth =
+      columnWidths[field] ??
+      document.querySelector(`.MuiDataGrid-columnHeader[data-field="${field}"]`)?.getBoundingClientRect().width ??
+      120;
+    resizingRef.current = { field, startX: event.clientX, startWidth };
+
+    const handleMouseMove = (moveEvent) => {
+      if (!resizingRef.current) return;
+      const { field: f, startX, startWidth: sw } = resizingRef.current;
+      const delta = moveEvent.clientX - startX;
+      const newWidth = Math.max(60, sw - delta);
+      setColumnWidths((prev) => ({ ...prev, [f]: newWidth }));
+    };
+    const handleMouseUp = () => {
+      resizingRef.current = null;
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+  };
+
+  // מחברים את ההרחבה לקו ההפרדה המובנה של הרשת עצמה (בין כותרות העמודות) - הוא
+  // כבר ממוקם נכון בדיוק על הקו שרואים על המסך, בניגוד לניסיון קודם לבנות ידית
+  // הרחבה עצמאית בתוך הכותרת המותאמת אישית, שיצא במיקום לא מדויק. columnSeparatorMouseDown
+  // הוא אירוע פנימי שה-DataGrid כבר מפרסם על כל לחיצה על הקו הזה, גם בגרסה החינמית
+  useEffect(() => {
+    if (!apiRef.current?.subscribeEvent) return;
+    return apiRef.current.subscribeEvent('columnSeparatorMouseDown', (params, event) => {
+      handleResizeStart(event, params.field);
+    });
+    // תלוי רק בטעינה הראשונית - handleResizeStart תמיד קורא את הרוחב העדכני בפועל
+    // מה-DOM (לא סוגר על ערך ישן), אז אין צורך לחבר מחדש בכל שינוי columnWidths
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // סורקת את כל השורות (לפי סדר השורות והעמודות בטבלה) ומחזירה רשימה מסודרת של
   // תאים שצריך לתקן - שדות חובה ריקים או ערכים לא תקינים - כדי לדעת לאיזה תא לקפוץ קודם
   const findProblemCells = (rowsToCheck) => {
@@ -902,7 +1132,7 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
   );
 
   const columns = useMemo(() => {
-    const dynamicColumns = orderedFieldDefs.map((f) => {
+    const dynamicColumns = displayFieldDefs.map((f) => {
       const isBoolean = f.technicalName === 'print';
       const pickListField = ['prefix', 'suffix', 'belongsTo'].includes(f.technicalName)
         ? f.technicalName
@@ -911,12 +1141,16 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
         f.isRequired ||
         ((f.technicalName === 'man' || f.technicalName === 'woman') &&
           (requiredFields.has('man') || requiredFields.has('woman')));
+      const headerName = showRequiredMark ? `${f.displayName} *` : f.displayName;
+      const customWidth = columnWidths[f.technicalName];
       return {
         field: f.technicalName,
-        headerName: showRequiredMark ? `${f.displayName} *` : f.displayName,
+        headerName,
         // flex במקום width קבוע - כל העמודות מתחלקות ברוחב שיש בפועל, כדי שהטבלה
-        // תמיד תיכנס בלי גלילה אופקית (בשילוב עם עטיפת שורות במקום חיתוך טקסט)
-        flex: isBoolean ? 0.6 : 1,
+        // תמיד תיכנס בלי גלילה אופקית (בשילוב עם עטיפת שורות במקום חיתוך טקסט) -
+        // אלא אם המשתמשת הרחיבה/הצרה את העמודה הזו ידנית, ואז width מפורש גובר
+        flex: customWidth ? undefined : (isBoolean ? 0.6 : 1),
+        width: customWidth,
         minWidth: isBoolean ? 70 : 90,
         // העריכה עצמה מתבצעת דרך קלט חי בתוך renderCell (ראו renderTextCell/
         // renderBooleanCell/renderAddressCell) ולא דרך מצב העריכה של ה-DataGrid -
@@ -930,11 +1164,25 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
           ? renderAddressCell
           : renderTextCell(pickListField),
         sortComparator: isBoolean ? undefined : createTextSortComparator(f.technicalName, secondarySortFields),
+        // מיון קורה רק דרך חץ המיון הביתי (renderHeader למטה), לא בכל לחיצה על הכותרת
+        sortable: false,
+        renderHeader: () => (
+          <ColumnHeader
+            field={f.technicalName}
+            headerName={headerName}
+            sortDirection={sortModel[0]?.field === f.technicalName ? sortModel[0].sort : null}
+            onSortClick={handleHeaderSortClick}
+            isDragArmed={dragArmedField === f.technicalName}
+          />
+        ),
       };
     });
 
     return [...dynamicColumns, ...systemColumns];
-  }, [orderedFieldDefs, renderAddressCell, renderBooleanCell, renderTextCell, secondarySortFields, requiredFields]);
+    // handleHeaderSortClick תלוי רק ב-sortModel, שכבר ברשימת התלויות למטה - אין צורך
+    // לחשב מחדש את כל העמודות בכל רינדור רק כי הפונקציה עצמה נוצרת מחדש בכל פעם
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [displayFieldDefs, renderAddressCell, renderBooleanCell, renderTextCell, secondarySortFields, requiredFields, columnWidths, sortModel, dragArmedField]);
 
   // אותה תיבת בחירה משמשת גם למיון הראשי וגם לתתי-המיון: אם עוד אין מיון ראשי (לא
   // לחצו על החץ בכותרת עמודה), הבחירה הראשונה כאן הופכת להיות המיון הראשי עצמו;
@@ -1010,6 +1258,7 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
         overflow: 'hidden',
         border: 'none',
         boxShadow: 'none',
+        bgcolor: '#f7f8fc',
         display: 'flex',
         flexDirection: 'column',
         minHeight: 0,
@@ -1025,11 +1274,12 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
           flexWrap: 'wrap',
           gap: 0.75,
           borderBottom: '1px solid #eef0f3',
-          background: 'linear-gradient(180deg, #fbfcfe 0%, #ffffff 100%)',
+          background: '#f7f8fc',
           flexShrink: 0,
         }}
       >
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+          {profileMenu}
           <Typography variant="subtitle1" sx={{ fontWeight: 700, letterSpacing: '-0.01em', color: '#0f172a', whiteSpace: 'nowrap' }}>
             ניהול רשימת מוזמנים
           </Typography>
@@ -1044,7 +1294,7 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
               width: 150,
               bgcolor: '#ffffff',
               '& .MuiOutlinedInput-root': { borderRadius: 2, height: '25px' },
-              '& .MuiOutlinedInput-input': { padding: '4px 8px', boxSizing: 'border-box', height: '100%' },
+              '& .MuiOutlinedInput-input': { padding: '4px 8px', boxSizing: 'border-box', height: '100%', fontSize: '0.75rem', fontWeight: 600 },
               '& .MuiInputLabel-root': { fontSize: '0.72rem' },
               '& .MuiInputLabel-root:not(.MuiInputLabel-shrink)': { top: '50%', transform: 'translate(14px, -50%) scale(1)' },
             }}
@@ -1099,7 +1349,7 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
               width: 80,
               bgcolor: '#ffffff',
               '& .MuiOutlinedInput-root': { borderRadius: 2, height: '25px' },
-              '& .MuiOutlinedInput-input': { padding: '4px 8px', boxSizing: 'border-box', height: '100%', display: 'flex', alignItems: 'center' },
+              '& .MuiOutlinedInput-input': { padding: '4px 8px', boxSizing: 'border-box', height: '100%', display: 'flex', alignItems: 'center', fontSize: '0.75rem', fontWeight: 600 },
               '& .MuiInputLabel-root': { fontSize: '0.72rem' },
               '& .MuiInputLabel-root:not(.MuiInputLabel-shrink)': { top: '50%', transform: 'translate(14px, -50%) scale(1)' },
             }}
@@ -1218,6 +1468,7 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
         loading={loading}
         checkboxSelection
         disableRowSelectionOnClick
+        disableColumnReorder
         density="compact"
         rowHeight={32}
         columnHeaderHeight={40}
@@ -1281,6 +1532,26 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
           '& .MuiDataGrid-footerContainer': {
             borderTop: '2px solid #e2e8f0',
             backgroundColor: '#f8fafc',
+          },
+          // סמן עכבר של הרחבה (חץ כפול) על קו ההפרדה בין העמודות - נכפה ידנית כי
+          // הסימון המובנה של הרכיב לא תמיד נדלק אוטומטית בהגדרה המותאמת אישית שלנו
+          '& .MuiDataGrid-columnSeparator': {
+            cursor: 'col-resize',
+          },
+          // בעמודות צרות (אחרי גרירה לסידור מחדש) האייקון של קו ההפרדה יכול לחפוף
+          // חזותית לכותרת המותאמת אישית שלנו ולגנוב ממנה קליקים (לחיצה על הכותרת
+          // הייתה "נופלת" על קו ההפרדה במקום על שם העמודה) - מעלים את מיכל הכותרת
+          // מעל קו ההפרדה, שהוא אח (sibling) שלו ברמת ה-DOM, לא רק צאצא שלנו
+          // אייקון קו ההפרדה (לא הקו עצמו, רק הצייור הקטן שבתוכו) לא אמור "לתפוס"
+          // קליקים בכלל - הוא רק חזותי. הקליק על קו ההפרדה עצמו ממשיך לעבוד רגיל
+          // (הרוחב שלו נשאר תקין), רק האייקון החופף לפעמים לכותרת בעמודות צרות
+          // מפסיק לחטוף קליקים שמיועדים לשם העמודה
+          '& .MuiDataGrid-iconSeparator': {
+            pointerEvents: 'none',
+          },
+          '& .MuiDataGrid-columnHeaderDraggableContainer': {
+            position: 'relative',
+            zIndex: 101, // הקו של MUI עצמו z-index:100 - חייבים לעבור אותו
           },
           '& .required-empty-cell': {
             backgroundColor: '#fdecea !important',
@@ -1414,12 +1685,12 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
         anchorEl={exportMenuAnchor}
         onClose={() => setExportMenuAnchor(null)}
       >
-        <MenuItem onClick={handlePrintLabels} sx={{ gap: 1.5 }}>
-          <LocalPrintshopOutlinedIcon fontSize="small" sx={{ color: '#475569' }} />
+        <MenuItem onClick={handlePrintLabels} sx={{ gap: 1, py: 0.5, px: 1.25, fontSize: '0.75rem', fontWeight: 600, minHeight: 'unset' }}>
+          <LocalPrintshopOutlinedIcon sx={{ color: '#475569', fontSize: '1rem' }} />
           הדפסת מדבקות
         </MenuItem>
-        <MenuItem onClick={handleDownloadExcel} sx={{ gap: 1.5 }}>
-          <FileDownloadOutlinedIcon fontSize="small" sx={{ color: '#475569' }} />
+        <MenuItem onClick={handleDownloadExcel} sx={{ gap: 1, py: 0.5, px: 1.25, fontSize: '0.75rem', fontWeight: 600, minHeight: 'unset' }}>
+          <FileDownloadOutlinedIcon sx={{ color: '#475569', fontSize: '1rem' }} />
           הורדת קובץ אקסל למחשב
         </MenuItem>
       </Menu>

@@ -23,10 +23,16 @@ function getLoggedUser() {
   return raw ? JSON.parse(raw) : null;
 }
 
+// כל קטגוריות ההגדרות - כרגע יש רק אחת (ניהול עמודות), אבל הרשימה בצד בנויה כך
+// שאפשר להוסיף עוד קטגוריות בעתיד בלי לשנות את מבנה העמוד
+const SETTINGS_CATEGORIES = [
+  { key: 'columns', label: 'ניהול עמודות', icon: ViewColumnOutlinedIcon },
+];
+
 export default function SettingsPage() {
   const navigate = useNavigate();
   const user = getLoggedUser();
-  const [view, setView] = useState('menu'); // 'menu' | 'columns'
+  const [selectedCategory, setSelectedCategory] = useState('columns');
   const [fieldDefs, setFieldDefs] = useState([]);
   const [prefs, setPrefs] = useState(() => parseColumnPreferences(user?.columnPreferences));
   const [savedOpen, setSavedOpen] = useState(false);
@@ -93,58 +99,90 @@ export default function SettingsPage() {
     </Box>
   );
 
+  // אם הגיעו לכאן מתוך מסך התאמת העמודות בייבוא (לא מהתפריט הרגיל) - חזרה צריכה
+  // לפתוח שוב את אותו מסך ייבוא, לא סתם לחזור לטבלה
+  const handleBack = () => {
+    if (sessionStorage.getItem('settingsReturnTo') === 'columnMatch') {
+      sessionStorage.removeItem('settingsReturnTo');
+      sessionStorage.setItem('reopenColumnMatch', 'true');
+    }
+    navigate('/');
+  };
+
   return (
     <Box sx={{ width: '100%', minHeight: '100vh', px: 3, py: 2 }}>
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 3 }}>
-        <IconButton
-          onClick={() => (view === 'menu' ? navigate('/') : setView('menu'))}
-        >
+        <IconButton onClick={handleBack}>
           <ArrowForwardIcon />
         </IconButton>
-        {view === 'menu' ? (
-          <Typography variant="h5" sx={{ fontWeight: 700, color: '#0f172a' }}>
-            הגדרות
-          </Typography>
-        ) : (
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-            <Typography
-              variant="h5"
-              onClick={() => setView('menu')}
-              sx={{ fontWeight: 500, color: '#94a3b8', cursor: 'pointer', '&:hover': { color: '#0f172a' } }}
-            >
-              הגדרות
-            </Typography>
-            <Typography variant="h5" sx={{ color: '#94a3b8' }}>‹</Typography>
-            <Typography variant="h5" sx={{ fontWeight: 700, color: '#0f172a' }}>
-              ניהול עמודות
-            </Typography>
-          </Box>
-        )}
+        <Typography variant="h5" sx={{ fontWeight: 700, color: '#0f172a' }}>
+          הגדרות
+        </Typography>
       </Box>
 
-      {view === 'menu' && (
-        <List sx={{ maxWidth: 420 }}>
-          <ListItemButton
-            onClick={() => setView('columns')}
-            sx={{ borderRadius: 2, border: '1px solid #e2e8f0', gap: 1.5 }}
-          >
-            <ViewColumnOutlinedIcon sx={{ color: '#475569' }} />
-            <ListItemText primary="ניהול עמודות" secondary="בחירת עמודות להצגה בטבלה ולהדפסה במדבקה" />
-          </ListItemButton>
+      <Box sx={{ display: 'flex', gap: 4, alignItems: 'flex-start' }}>
+        {/* רשימת הקטגוריות - נשארת קבועה בצד, לא נעלמת כשבוחרים קטגוריה */}
+        <List sx={{ width: 280, flexShrink: 0 }}>
+          {SETTINGS_CATEGORIES.map(({ key, label, icon: Icon }) => (
+            <ListItemButton
+              key={key}
+              selected={selectedCategory === key}
+              onClick={() => setSelectedCategory(key)}
+              sx={{
+                borderRadius: 2,
+                mb: 0.5,
+                gap: 1.5,
+                '&.Mui-selected': { bgcolor: '#eff6ff' },
+                '&.Mui-selected:hover': { bgcolor: '#eff6ff' },
+              }}
+            >
+              <Icon sx={{ color: '#475569' }} />
+              <ListItemText primary={label} />
+            </ListItemButton>
+          ))}
         </List>
-      )}
 
-      {view === 'columns' && (
-        <Box>
-          <Box sx={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-            {columnList('show', 'עמודות להצגה')}
-            {columnList('print', 'עמודות להדפסה')}
-          </Box>
-          <Button variant="contained" onClick={handleSave} sx={{ mt: 3 }}>
-            שמור
-          </Button>
+        {/* תוכן הקטגוריה הנבחרת - מוצג באמצע, לצד הרשימה */}
+        <Box sx={{ flex: 1, pb: 10 }}>
+          {selectedCategory === 'columns' && (
+            <Box sx={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+              {columnList('show', 'עמודות להצגה')}
+              {columnList('print', 'עמודות להדפסה')}
+            </Box>
+          )}
         </Box>
-      )}
+      </Box>
+
+      {/* כפתור השמירה מודבק לתחתית המסך - תמיד גלוי, גם בזמן גלילה - בלי רקע/מסגרת סביבו, ישר על המסך */}
+      <Box
+        sx={{
+          position: 'fixed',
+          bottom: 0,
+          left: 0,
+          right: 0,
+          px: 3,
+          py: 1.5,
+          display: 'flex',
+          justifyContent: 'flex-end',
+        }}
+      >
+        <Button
+          variant="outlined"
+          onClick={handleSave}
+          sx={{
+            bgcolor: '#dbeafe',
+            color: '#1e293b',
+            borderColor: '#60a5fa',
+            '&:hover': { bgcolor: '#bfdbfe', borderColor: '#60a5fa' },
+            py: 1,
+            px: 3,
+            fontSize: '0.95rem',
+            fontWeight: 700,
+          }}
+        >
+          שמור שינויים
+        </Button>
+      </Box>
 
       <Snackbar
         open={savedOpen}
