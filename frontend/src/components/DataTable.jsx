@@ -61,7 +61,7 @@ function createTextSortComparator(field, secondaryFields) {
   };
 }
 
-export default function DataTable({ records, loading, onSave, onAutoSave, onSelectionChange, onDeleteRows, initialSelectedIds, onImport, onOpenPrint, onActivityFailure }) {
+export default function DataTable({ records, loading, onSave, onAutoSave, onSelectionChange, onDeleteRows, initialSelectedIds, onImport, onOpenPrint, onActivityFailure, columnPreferences, profileMenu, onColumnOrderChange }) {
   const [rows, setRows] = useState(records);
   const [selectionModel, setSelectionModel] = useState(initialSelectedIds || []);
   const [sortModel, setSortModel] = useState([]);
@@ -762,7 +762,7 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
       setSortModel(sortModel[0].sort === 'asc' ? [{ field, sort: 'desc' }] : []);
       return;
     }
-    handleAddSortField(field);
+    setSortModel([{ field, sort: 'asc' }]);
   };
 
   // גרירת עמודה לסידור מחדש - תנועה אחת רציפה (לוחצים, גוררים בלי לשחרר, משחררים
@@ -921,6 +921,7 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
   const columns = useMemo(() => {
     const dynamicColumns = displayFieldDefs.map((f) => {
       const isBoolean = f.technicalName === 'print';
+      const customWidth = columnWidths[f.technicalName];
       const pickListField = ['prefix', 'suffix', 'belongsTo'].includes(f.technicalName)
         ? f.technicalName
         : null;
@@ -948,13 +949,12 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
         // מיון קורה רק דרך חץ המיון הביתי (renderHeader למטה), לא בכל לחיצה על הכותרת
         sortable: false,
         renderHeader: () => (
-          <ColumnHeader
-            field={f.technicalName}
-            headerName={headerName}
-            sortDirection={sortModel[0]?.field === f.technicalName ? sortModel[0].sort : null}
-            onSortClick={handleHeaderSortClick}
-            isDragArmed={dragArmedField === f.technicalName}
-          />
+          <Box
+            onClick={() => handleHeaderSortClick(f.technicalName)}
+            sx={{ cursor: 'pointer', display: 'flex', alignItems: 'center', height: '100%', width: '100%' }}
+          >
+            <Typography variant="inherit" noWrap>{f.isRequired ? `${f.displayName} *` : f.displayName}</Typography>
+          </Box>
         ),
       };
     });

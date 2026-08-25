@@ -134,7 +134,6 @@ function mergeDuplicateIdentities(rows) {
 }
 
 export default function ExcelImport({ onImport, onFailure }) {
-export default function ExcelImport({ onImport }) {
   const navigate = useNavigate();
   const [fileNames, setFileNames] = useState([]); // כל הקבצים שהועלו בסשן הזה (לא רק האחרון)
   const [matchError, setMatchError] = useState('');
@@ -254,10 +253,6 @@ export default function ExcelImport({ onImport }) {
 
   const handleFile = async (event) => {
     try {
-      const file = event.target.files?.[0];
-      if (!file) return;
-      setFileNames((prev) => [...prev, file.name]);
-      setMatchError('');
     const file = event.target.files?.[0];
     if (!file) return;
     const fileName = file.name;
@@ -295,13 +290,12 @@ export default function ExcelImport({ onImport }) {
       return;
     }
 
-      await runColumnMatching(json, rowSheetNames, headerLabels, null);
+      await runColumnMatching(json, rowSheetNames, headerLabels, null, fileName);
     } catch (err) {
       console.error('Excel import failed:', err);
       setMatchError('לא ניתן לקרוא את קובץ ה־Excel.');
       onFailure?.('EXCEL_IMPORT_FAILED', `Reason: ${err.message || 'File could not be read'}`);
     }
-    await runColumnMatching(json, rowSheetNames, headerLabels, null, fileName);
   };
 
   const handleBelongsToConfirm = async () => {

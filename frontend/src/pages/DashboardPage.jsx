@@ -1,20 +1,26 @@
 import { useEffect, useCallback, useRef, useState } from 'react';
-import { Box, Button, Typography } from '@mui/material';
+import { useNavigate } from 'react-router-dom';
+import { Avatar, Box, Button, Dialog, DialogActions, DialogContent, DialogContentText, DialogTitle, IconButton, Menu, MenuItem, Typography } from '@mui/material';
+import SettingsOutlinedIcon from '@mui/icons-material/SettingsOutlined';
+import LogoutOutlinedIcon from '@mui/icons-material/LogoutOutlined';
 import DataTable from '../components/DataTable';
 import api from '../services/api';
 import PrintModal from '../components/PrintModal'; // ייבוא המודאל החדש
+import { buildIdentityKey, mergeBelongsToValues } from '../utils/recipientIdentity';
+import { parseColumnPreferences } from '../utils/columnPreferences';
 
 const DEFAULT_PRINTABLE_FIELDS = ['prefix', 'man', 'woman', 'lastName', 'suffix', 'street', 'houseNo', 'city', 'country'];
 const INTERNAL_PRINT_FIELD_KEYS = new Set(['id', 'hashCode', 'changed', 'changeDate', 'changeBy', 'createdBy', 'print', 'printFields']);
-import PrintModal from '../components/PrintModal'; 
-import { buildIdentityKey, mergeBelongsToValues } from '../utils/recipientIdentity';
-import { parseColumnPreferences } from '../utils/columnPreferences';
 
 
 
 function getLoggedUser() {
-  const raw = localStorage.getItem('user');
+  const raw = sessionStorage.getItem('user');
   return raw ? JSON.parse(raw) : null;
+}
+
+function getInitials(name) {
+  return String(name || 'משתמש').trim().charAt(0);
 }
 
 function getLocalRecords(phone) {
@@ -137,6 +143,7 @@ function cloneRows(rows) {
 }
 
 export default function DashboardPage() {
+  const navigate = useNavigate();
   const [records, setRecords] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -144,6 +151,8 @@ export default function DashboardPage() {
   const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
   const [printSources, setPrintSources] = useState({ selectedRows: [], filteredRows: [], allRows: [] });
   const [isTableDirty, setIsTableDirty] = useState(false);
+  const [logoutDialogOpen, setLogoutDialogOpen] = useState(false);
+  const [profileMenuAnchor, setProfileMenuAnchor] = useState(null);
   const hasTrackedDashboardVisit = useRef(false);
   const pendingDeletedHashCodes = useRef(getPendingDeletedHashCodes(user?.phone));
   const recordsRef = useRef(records);
@@ -237,20 +246,6 @@ export default function DashboardPage() {
       sessionStorage.removeItem('savedSelectedIds');
     }
   }, []);
-  //  מקפיץ אזהרה ברענן/סגירה רק אם הסטייט השתנה (כלומר יש שינויים שלא נשמרו)
-  useEffect(() => {
-    const handleBeforeUnload = (e) => {
-      if (isTableDirty) {
-        e.preventDefault();
-        // e.returnValue = 'ישנם שינויים שלא נשמרו. האם אתה בטוח שברצונך לעזוב?';
-        return e.returnValue;
-      }
-    };
-
-    window.addEventListener('beforeunload', handleBeforeUnload);
-    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
-  }, [isTableDirty]);
-
   // עטוף ב-useCallback (לא פונקציה רגילה) כדי שהזהות שלו תישאר יציבה בין רינדורים -
   // אחרת DataTable מקבל onAutoSave חדש בכל הקשה, מה שגורם לו לבנות מחדש את כל
   // ה-columns שלו וקלטי העריכה מאבדים פוקוס אחרי כל אות (בדיוק הבאג שנתקלנו בו)
@@ -451,10 +446,18 @@ export default function DashboardPage() {
     }
   };
 
-  const handleLogout = async () => {
+  const performLogout = async () => {
     await trackActivity('LOGGED_OUT');
-    localStorage.removeItem('user');
+    sessionStorage.removeItem('user');
     window.location.href = '/login';
+  };
+
+  const handleLogout = () => {
+    if (isTableDirty) {
+      setLogoutDialogOpen(true);
+      return;
+    }
+    performLogout();
   };
 
   const getGreeting = () => {
@@ -470,37 +473,6 @@ export default function DashboardPage() {
 
     return 'ערב טוב';
   };
-  return (
-      <Box sx={{ width: '100%', px: 2, pt: 0.5, pb: 1 }}>
-
-
-
-        <Typography
-            variant="h8"
-            sx={{
-              fontWeight: 700,
-              color: '#1e3a8a',
-              textAlign: 'right',
-              transform: 'translateY(-30px)',
-            }}
-        >
-
-          <Box display="flex" justifyContent="space-between" mb={0.25} >
-
-            {getGreeting()}, {user?.firstNameMan || user?.firstNameWoman || 'משתמש'}
-            <Button
-                variant="outlined"
-                size="small"
-                onClick={handleLogout}
-                sx={{ textTransform: 'none', px: 2, borderRadius: 2 }}
-
-            >
-              יציאה
-
-            </Button>
-
-          </Box>
-        </Typography>
   const profileMenu = (
     <Box sx={{ display: 'inline-flex' }}>
       <IconButton onClick={(e) => setProfileMenuAnchor(e.currentTarget)} size="small">
@@ -578,6 +550,20 @@ export default function DashboardPage() {
   return (
       <Box sx={{ width: '100%', height: '100vh', px: 2, pt: 0.5, pb: 1, display: 'flex', flexDirection: 'column' }}>
 
+        <Box display="flex" justifyContent="space-between" alignItems="center" mb={1}>
+          <Typography fontWeight={700} color="#1e3a8a">
+            {getGreeting()}, {user?.firstNameMan || user?.firstNameWoman || 'משתמש'}
+          </Typography>
+          <Button
+            variant="outlined"
+            size="small"
+            onClick={handleLogout}
+            sx={{ textTransform: 'none', px: 2, borderRadius: 2 }}
+          >
+            יציאה
+          </Button>
+        </Box>
+
         {error && (
             <Typography color="error" variant="body2" mb={1}>
               {error}
@@ -598,23 +584,10 @@ export default function DashboardPage() {
               setIsPrintModalOpen(true);
               trackActivity('PRINT_MODAL_OPENED', `Selected rows: ${sources.selectedRows.length}`);
             }}
+            columnPreferences={parseColumnPreferences(user?.columnPreferences)}
+            profileMenu={profileMenu}
+            onColumnOrderChange={handleColumnOrderChange}
         />
-        <Box sx={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
-          <DataTable
-              records={records}
-              loading={loading}
-              onSave={handleSave}
-              onAutoSave={handleAutoSaveLocal}
-              onSelectionChange={setSelectedRows}
-              onDeleteRows={handleDeleteRows}
-              initialSelectedIds={initialSelectedIds}
-              onImport={handleImport}
-              onOpenPrint={() => setIsPrintModalOpen(true)}
-              columnPreferences={parseColumnPreferences(user?.columnPreferences)}
-              profileMenu={profileMenu}
-              onColumnOrderChange={handleColumnOrderChange}
-          />
-        </Box>
 
         {/* רנדור המודאל והעברת הרשומות המסומנות אליו */}
         <PrintModal
@@ -624,6 +597,19 @@ export default function DashboardPage() {
             filteredRows={printSources.filteredRows}
             records={printSources.allRows}
         />
+
+        <Dialog open={logoutDialogOpen} onClose={() => setLogoutDialogOpen(false)}>
+          <DialogTitle>יש שינויים שלא נשמרו</DialogTitle>
+          <DialogContent>
+            <DialogContentText>
+              לא ביצעתם שמירה. אם תצאו, ייתכן שהשינויים יימחקו.
+            </DialogContentText>
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setLogoutDialogOpen(false)}>להישאר</Button>
+            <Button color="error" variant="contained" onClick={performLogout}>לצאת בכל זאת</Button>
+          </DialogActions>
+        </Dialog>
 
       </Box>
   );}
