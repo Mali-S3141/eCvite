@@ -1,5 +1,4 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import {
   Dialog,
   DialogTitle,
@@ -33,8 +32,7 @@ function getSampleValues(rows, header, limit = 5) {
 
 // מסך שמופיע כשיש עמודות בקובץ ה-Excel שלא זוהו אוטומטית - המשתמשת בוחרת ידנית
 // לאיזה שדה כל עמודה שייכת (או להתעלם ממנה), והבחירה נשמרת מיד כ"כינוי" חדש לפעם הבאה
-export default function ColumnMatchDialog({ open, unmatchedHeaders, headerLabels = {}, columns, rows, onConfirm, onCancel }) {
-  const navigate = useNavigate();
+export default function ColumnMatchDialog({ open, unmatchedHeaders, headerLabels = {}, columns, rows, onConfirm, onCancel, onOpenColumnSettings }) {
   const [choices, setChoices] = useState({});
   const [expandedHeader, setExpandedHeader] = useState(null);
 
@@ -48,16 +46,16 @@ export default function ColumnMatchDialog({ open, unmatchedHeaders, headerLabels
   };
 
   return (
-    <Dialog open={open} onClose={onCancel} maxWidth="sm" fullWidth>
-      <DialogTitle>התאמת עמודות שלא זוהו אוטומטית</DialogTitle>
+    <Dialog open={open} onClose={onCancel} maxWidth="xs" fullWidth>
+      <DialogTitle sx={{ pb: 0.5, pt: 1.5, fontSize: '1.05rem' }}>התאמת עמודות שלא זוהו אוטומטית</DialogTitle>
       <DialogContent>
-        <Typography variant="body2" color="text.secondary" mb={2}>
+        <Typography variant="body2" color="text.secondary" mb={1}>
           בחרי לאיזה שדה שייכת כל עמודה - הבחירה תישמר אוטומטית גם לייבוא הבא.
         </Typography>
         {unmatchedHeaders.map((header) => {
           const isExpanded = expandedHeader === header;
           return (
-            <Box key={header} mb={2}>
+            <Box key={header} mb={1}>
               <Box display="flex" alignItems="center" gap={1}>
                 <Typography sx={{ minWidth: 130 }}>{headerLabels[header] ?? header}</Typography>
                 <IconButton
@@ -96,7 +94,7 @@ export default function ColumnMatchDialog({ open, unmatchedHeaders, headerLabels
           component="button"
           type="button"
           variant="body2"
-          onClick={() => navigate('/settings')}
+          onClick={onOpenColumnSettings}
           sx={{ display: 'block', mt: 1 }}
         >
           להגדרות נוספות על העמודות
