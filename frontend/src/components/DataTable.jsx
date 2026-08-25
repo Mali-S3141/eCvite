@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Box,Button,Paper,Stack,Typography,TextField,Chip,Menu,MenuItem,IconButton,Popper,Dialog,DialogTitle,DialogContent,DialogContentText,DialogActions,} from '@mui/material';
 import SwapHorizIcon from '@mui/icons-material/SwapHoriz';
+import AddIcon from '@mui/icons-material/Add';
 import ArrowDropDownIcon from '@mui/icons-material/ArrowDropDown';
 import CloseIcon from '@mui/icons-material/Close';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
@@ -30,7 +31,8 @@ const SYSTEM_FIELDS_HIDDEN_BY_DEFAULT = {
 
 // עמודות כתובת - מהן אפשר להעביר ערך שלא מתאים לעמודת "הערת כתובת" (קליק ימני על התא)
 const ADDRESS_FIELDS = ['country', 'city', 'neighborhood', 'street', 'houseNo'];
-const DEFAULT_PRINTABLE_FIELDS = new Set(['prefix', 'man', 'woman', 'lastName', 'suffix', 'street', 'houseNo', 'city', 'country']);
+// Printing is opt-in: a recipient starts with no fields selected.
+const DEFAULT_PRINTABLE_FIELDS = new Set();
 
 // המיון המובנה של הטבלה (Intl.Collator() בלי locale) לא ממיין נכון לפי א'-ב' עברי -
 // collator עם locale 'he' ממיין נכון, וגם numeric:true נותן סדר טבעי למספרים (כמו במספר בית)
@@ -59,7 +61,7 @@ function createTextSortComparator(field, secondaryFields) {
   };
 }
 
-export default function DataTable({ records, loading, onSave, onAutoSave, onSelectionChange, onDeleteRows, initialSelectedIds, onImport, onOpenPrint }) {
+export default function DataTable({ records, loading, onSave, onAutoSave, onSelectionChange, onDeleteRows, initialSelectedIds, onImport, onOpenPrint, onActivityFailure }) {
   const [rows, setRows] = useState(records);
   const [selectionModel, setSelectionModel] = useState(initialSelectedIds || []);
   const [sortModel, setSortModel] = useState([]);
@@ -152,8 +154,9 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
             .catch((err) => {
                 console.log("COLUMN ERROR:", err);
                 setFieldDefs([]);
+                onActivityFailure?.('RECIPIENT_COLUMNS_LOAD_FAILED', `Reason: ${err.message || 'Column definitions could not be loaded'}`);
             });
-    }, []);
+    }, [onActivityFailure]);
   // ברשומות שמגיעות מהשרת החדש (Recipients) אין יותר שדה id מספרי - המזהה הייחודי
   // האמיתי הוא ה-hashCode (מפתח ראשי של הטבלה בפועל) - ה-DataGrid חייב שדה id ייחודי
   // לכל שורה, אז ממלאים אותו מה-hashCode כשהוא חסר
@@ -164,9 +167,9 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
   // משחזרת פעם אחת בלבד את הבחירה שהייתה קיימת (חוזרים מתצוגה מקדימה), ברגע שהשורות נטענות
   useEffect(() => {
     if (!appliedInitialSelection.current && rows.length && initialSelectedIds && initialSelectedIds.length) {
-      const matched = rows.filter((row) => initialSelectedIds.includes(row.id));
-      if (matched.length) {
-        onSelectionChange(matched);
+        const matched = rows.filter((row) => initialSelectedIds.includes(row.id));
+        if (matched.length) {
+          onSelectionChange?.(matched);
       }
       appliedInitialSelection.current = true;
     }
@@ -204,11 +207,17 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
 
   const handlePrintLabels = () => {
     setExportMenuAnchor(null);
-    if (onOpenPrint) onOpenPrint();
+    if (!onOpenPrint) return;
+
+    const selectedRows = rows.filter((row) =>
+      selectionModel.some((id) => String(id) === String(row.hashCode ?? row.id))
+    );
+    onOpenPrint({ selectedRows, filteredRows, allRows: rows });
   };
 
     const handleDownloadExcel = async () => {
         setExportMenuAnchor(null);
+      try {
 
         const workbook = new ExcelJS.Workbook();
         const worksheet = workbook.addWorksheet('נתונים');
@@ -250,9 +259,13 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
         link.click();
 
         URL.revokeObjectURL(url);
+      } catch (err) {
+        console.error('Excel export failed:', err);
+        onActivityFailure?.('EXCEL_EXPORT_FAILED', `Reason: ${err.message || 'Export failed'}`);
+      }
     };
 
-  const handleAddRow = () => {
+  const handleAddRow = useCallback(() => {
     // חלק מה-id-ים הם hashCode (מחרוזת, לא מספר) - מתעלמים מהם בחישוב המספר הבא
     const currentRows = rowsRef.current;
     const numericIds = currentRows.map((row) => Number(row.id)).filter((n) => Number.isFinite(n));
@@ -282,7 +295,7 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
     onAutoSave(updatedRows);
 
 
-  };
+  }, [onAutoSave]);
 
   const handleDeleteRows = () => {
     const idsToDelete = selectionModel.map(String);
@@ -292,7 +305,7 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
     const updatedRows = rows.filter((row) => !idsToDelete.includes(String(row.id)));
     setRows(updatedRows);
     setSelectionModel([]);
-    onSelectionChange([]);
+    onSelectionChange?.([]);
     onAutoSave(updatedRows);
       console.log("ROWS AFTER DELETE:", updatedRows);
     // מחיקה מפורשת מיידית בשרת - רק השורות שבאמת סומנו ונלחצו עליהן "מחק", לא לפי השוואת רשימה
@@ -771,8 +784,41 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
       renderCell: renderRowPrintSelection,
     };
 
-    return [printSelectionColumn, ...dynamicColumns, ...systemColumns];
-  }, [orderedFieldDefs, renderAddressCell, renderBooleanCell, renderRowPrintSelection, renderTextCell, secondarySortFields]);
+    const addFirstRowColumn = {
+      field: 'addRow',
+      headerName: '',
+      width: 44,
+      sortable: false,
+      filterable: false,
+      disableColumnMenu: true,
+      renderCell: (params) => {
+        const firstRowId = params.api.getSortedRowIds()[0];
+        if (String(params.id) !== String(firstRowId)) return null;
+        return (
+          <IconButton
+            aria-label="הוסף שורה"
+            title="הוסף שורה"
+            size="small"
+            onClick={(event) => {
+              event.stopPropagation();
+              handleAddRow();
+            }}
+            sx={{
+              width: 32,
+              height: 32,
+              bgcolor: '#60a5fa',
+              color: '#ffffff',
+              '&:hover': { bgcolor: '#3b82f6' },
+            }}
+          >
+            <AddIcon fontSize="small" />
+          </IconButton>
+        );
+      },
+    };
+
+    return [addFirstRowColumn, printSelectionColumn, ...dynamicColumns, ...systemColumns];
+  }, [handleAddRow, orderedFieldDefs, renderAddressCell, renderBooleanCell, renderRowPrintSelection, renderTextCell, secondarySortFields]);
 
   const handleAddSecondarySort = (field) => {
     if (!field || secondarySortFields.includes(field)) return;
@@ -936,7 +982,7 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
         </Box>
 
         <Stack direction="row" spacing={1}>
-          <ExcelImport onImport={onImport} />
+          <ExcelImport onImport={onImport} onFailure={onActivityFailure} />
 
           <Button
             variant="outlined"
@@ -945,7 +991,7 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
             endIcon={<ArrowDropDownIcon />}
             sx={{ borderRadius: 2, textTransform: 'none', fontWeight: 600 }}
           >
-            יצוא
+            ייצוא/הדפסה
           </Button>
 
           <Button
@@ -978,7 +1024,7 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
               '&:hover': { bgcolor: '#3b82f6', boxShadow: '0 6px 16px rgba(96, 165, 250, 0.35)' },
             }}
           >
-            שמור את כל המוזמנים
+            שמור
           </Button>
         </Stack>
       </Box>
@@ -998,13 +1044,10 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
         checkboxSelection
         disableRowSelectionOnClick
         getCellClassName={(params) => {
-          // צביעה בכלל לא קורית לפני שהיה ניסיון שמירה שנחסם - שורה חדשה/ריקה לא נצבעת
-          // מיד, רק אחרי שלוחצים "שמור את כל המוזמנים" ונמצאות בעיות בפועל
-          if (problemQueue.length === 0) return '';
-
           // התא הספציפי שקפצנו אליו כרגע (הראשון בתור התיקונים) - מודגש הרבה יותר חזק
           // מכל שאר תאי הבעיה, כדי שיהיה ברור בבירור לאיפה קפצו
           if (
+            problemQueue.length > 0 &&
             String(params.id) === String(problemQueue[0].id) &&
             params.field === problemQueue[0].field
           ) {
@@ -1142,7 +1185,7 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
         onRowSelectionModelChange={(newSelectionModel) => {
           setSelectionModel(newSelectionModel);
           const fullSelectedRows = rows.filter((row) => newSelectionModel.includes(row.id));
-          onSelectionChange(fullSelectedRows);
+            onSelectionChange?.(fullSelectedRows);
         }}
         sortModel={sortModel}
         onSortModelChange={(model) => setSortModel(model)}

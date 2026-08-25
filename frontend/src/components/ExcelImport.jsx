@@ -132,7 +132,7 @@ function mergeDuplicateIdentities(rows) {
   return order.map((mapKey) => map.get(mapKey));
 }
 
-export default function ExcelImport({ onImport }) {
+export default function ExcelImport({ onImport, onFailure }) {
   const [fileNames, setFileNames] = useState([]); // כל הקבצים שהועלו בסשן הזה (לא רק האחרון)
   const [matchError, setMatchError] = useState('');
   const [pending, setPending] = useState(null);
@@ -208,18 +208,20 @@ export default function ExcelImport({ onImport }) {
     } catch (err) {
       console.error('לא ניתן היה לטעון את הגדרות השדות מהשרת:', err);
       setMatchError('לא ניתן היה להתאים עמודות אוטומטית (השרת לא זמין) - הקובץ יובא כמו שהוא.');
+      onFailure?.('EXCEL_COLUMN_MATCH_FAILED', `Reason: ${err.message || 'Column matching failed'}`);
       finish(json);
     }
   };
 
   const handleFile = async (event) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-    setFileNames((prev) => [...prev, file.name]);
-    setMatchError('');
+    try {
+      const file = event.target.files?.[0];
+      if (!file) return;
+      setFileNames((prev) => [...prev, file.name]);
+      setMatchError('');
 
-    const data = await file.arrayBuffer();
-    const workbook = XLSX.read(data);
+      const data = await file.arrayBuffer();
+      const workbook = XLSX.read(data);
 
     // קוראים את כל הגליונות בקובץ (לא רק את הראשון) - כדי לא לפספס גליון נוסף
     // (למשל גליון של כתובות בארץ וגליון נפרד של כתובות בחו"ל) - כולם מיובאים לאותה טבלה
@@ -249,7 +251,12 @@ export default function ExcelImport({ onImport }) {
       return;
     }
 
-    await runColumnMatching(json, rowSheetNames, headerLabels, null);
+      await runColumnMatching(json, rowSheetNames, headerLabels, null);
+    } catch (err) {
+      console.error('Excel import failed:', err);
+      setMatchError('לא ניתן לקרוא את קובץ ה־Excel.');
+      onFailure?.('EXCEL_IMPORT_FAILED', `Reason: ${err.message || 'File could not be read'}`);
+    }
   };
 
   const handleBelongsToConfirm = async () => {
@@ -292,6 +299,7 @@ export default function ExcelImport({ onImport }) {
         aliasesToSave.map(({ header, technicalName }) =>
           api.addRecipientColumnAlias(technicalName, header).catch((err) => {
             console.error('לא ניתן היה לשמור את הכינוי החדש:', err);
+            onFailure?.('EXCEL_ALIAS_SAVE_FAILED', `Reason: ${err.message || 'Column alias could not be saved'}`);
           })
         )
       );
