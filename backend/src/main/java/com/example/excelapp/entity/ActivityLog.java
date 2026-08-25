@@ -28,6 +28,10 @@ public class ActivityLog {
     @Column(nullable = false, length = 32)
     private String phone;
 
+    // Nullable to keep schema updates compatible with activity rows that already exist.
+    @Column(name = "user_name", length = 160)
+    private String userName;
+
     @Column(nullable = false, length = 80)
     private String action;
 
