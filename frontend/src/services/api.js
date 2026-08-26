@@ -59,6 +59,9 @@ const api = {
 
   updateColumnPreferences: (phone, columnPreferences) =>
       apiClient.put('/auth/column-preferences', { phone, columnPreferences }),
+
+  getRecipientHistory: (hashCode) =>
+      apiClient.get(`/recipients/${encodeURIComponent(hashCode)}/history`),
 };
 
 export default api;

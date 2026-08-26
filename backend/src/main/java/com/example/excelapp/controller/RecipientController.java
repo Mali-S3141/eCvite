@@ -13,8 +13,12 @@ import com.example.excelapp.service.ExcelService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
+
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.PersistenceContext;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -36,6 +40,19 @@ public class RecipientController {
     @Autowired
     private ExcelService excelService;
 
+    @PersistenceContext
+    private EntityManager entityManager;
+
+    // "מציגה" למסד הנתונים מי המשתמשת המבצעת את הפעולה הנוכחית, כדי שהטריגרים
+    // ששומרים היסטוריית שינויים בטבלת הנמענים (recipients_history) ידעו למי לייחס
+    // כל שינוי/מחיקה - חייבת לרוץ באותה טרנזקציה (@Transactional) של הפעולה עצמה,
+    // אחרת ה-DB "ישכח" את זה לפני שהשמירה/מחיקה בפועל קורית
+    private void stampCurrentUserForHistory(String userIdentity) {
+        entityManager
+                .createNativeQuery("SELECT set_config('app.current_user', :val, true)")
+                .setParameter("val", userIdentity)
+                .getSingleResult();
+    }
 
     public RecipientController(
             RecipientsRepository recipientRepository,
@@ -49,6 +66,7 @@ public class RecipientController {
 
 
     @PostMapping("/save")
+    @Transactional
     public ResponseEntity<?> saveRecipients(
             @RequestBody SaveRecipientsRequest request
     ) {
@@ -63,6 +81,8 @@ public class RecipientController {
                     .status(HttpStatus.NOT_FOUND)
                     .body("User not found");
         }
+
+        stampCurrentUserForHistory(user.getHashCode());
 
         List<Recipients> incoming = request.getRecipients();
 
@@ -273,6 +293,7 @@ public class RecipientController {
 
 
     @PostMapping("/delete")
+    @Transactional
     public ResponseEntity<?> deleteRecipients(
             @RequestBody DeleteRecipientsRequest request
     ) {
@@ -284,6 +305,8 @@ public class RecipientController {
                     .status(HttpStatus.NOT_FOUND)
                     .body("User not found");
         }
+
+        stampCurrentUserForHistory(user.getHashCode());
 
         List<String> hashCodes = request.getHashCodes();
 
@@ -298,5 +321,47 @@ public class RecipientController {
         userRecipientsRepository.deleteAll(linksToDelete);
 
         return ResponseEntity.ok().build();
+    }
+
+    // כל ההסטוריה השמורה לנמען ספציפי (recipients_history) - מכל המשתמשות שאי-פעם
+    // שינו אותו, לא רק המשתמשת הנוכחית. מחזירה שאילתה גולמית (לא ישות JPA) כדי לא
+    // להתעסק עם מיפוי טיפוס jsonb - old_data מוחזר כמחרוזת JSON גולמית, שהפרונט
+    // כבר יודע לפרש (JSON.parse), ו"מי שינה" גם כשם תצוגה (לא רק הקוד הטכני)
+    @SuppressWarnings("unchecked")
+    @GetMapping("/{hashCode}/history")
+    public ResponseEntity<?> getRecipientHistory(@PathVariable String hashCode) {
+        List<Object[]> rows = entityManager.createNativeQuery(
+                "SELECT h.changed_by, h.change_date, h.operation, CAST(h.old_data AS text), " +
+                        "COALESCE(NULLIF(u.first_name_man, ''), NULLIF(u.first_name_woman, ''), 'משתמשת לא ידועה') AS changed_by_name " +
+                        "FROM recipients_history h " +
+                        "LEFT JOIN users u ON u.hash_code = h.changed_by " +
+                        "WHERE h.recipient_hash_code = :hashCode " +
+                        "ORDER BY h.change_date DESC"
+        ).setParameter("hashCode", hashCode).getResultList();
+
+        List<Map<String, Object>> result = new ArrayList<>();
+        for (Object[] row : rows) {
+            Map<String, Object> entry = new java.util.LinkedHashMap<>();
+            entry.put("changedBy", row[0]);
+            entry.put("changeDate", row[1]);
+            entry.put("operation", row[2]);
+            entry.put("oldData", row[3]);
+            entry.put("changedByName", row[4]);
+            result.add(entry);
+        }
+
+        return ResponseEntity.ok(result);
+    }
+
+    @GetMapping("/_debug/find")
+    public ResponseEntity<?> debugFind() {
+        List<Object[]> rows = entityManager.createNativeQuery(
+                "SELECT hash_code, man, woman, last_name, phone, mail, father_name, mother_name, country, city, street, house_no, belongs_to, prefix, suffix, changed, print, display, address_note, address_note_sources FROM recipients WHERE man = 'יעקב' AND woman = 'חנה' AND last_name = 'לוי'"
+        ).getResultList();
+        List<String> result = new ArrayList<>();
+        for (Object[] row : rows) {
+            result.add(java.util.Arrays.toString(row));
+        }
+        return ResponseEntity.ok(result);
     }
 }

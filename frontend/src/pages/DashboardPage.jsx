@@ -362,7 +362,7 @@ export default function DashboardPage() {
   };
 
   return (
-      <Box sx={{ width: '100%', height: '100vh', px: 2, pt: 0.5, pb: 1, display: 'flex', flexDirection: 'column' }}>
+      <Box sx={{ width: '100%', height: '100vh', px: 1, pt: 0.5, pb: 1, display: 'flex', flexDirection: 'column' }}>
 
         {error && (
             <Typography color="error" variant="body2" mb={1}>
