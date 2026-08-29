@@ -5,7 +5,6 @@ import com.example.excelapp.entity.UserRecipients;
 import com.example.excelapp.entity.Recipients;
 import com.example.excelapp.repository.RecipientsRepository;
 import com.example.excelapp.dto.SaveRecipientsRequest;
-import com.example.excelapp.dto.DeleteRecipientsRequest;
 import com.example.excelapp.repository.UserRecipientsRepository;
 import com.example.excelapp.repository.UserRepository;
 import com.example.excelapp.service.ExcelService;
@@ -83,6 +82,16 @@ public class RecipientController {
         }
 
         stampCurrentUserForHistory(user.getHashCode());
+
+        // מוחקים (מנתקים) קודם, לפני השמירה - לא אחריה. אם המחיקה הייתה רצה אחרי
+        // השמירה, נמען שנמחק ואז יובא/נוסף מחדש עם אותה זהות היה מקבל hash זהה לנמען
+        // הישן שעדיין מקושר אליך באותו רגע, והמחיקה שרצה רק אחר כך הייתה מנתקת
+        // בטעות גם את מה שכרגע נשמר. באותה בקשה/טרנזקציה של השמירה עצמה (לא בקשת
+        // HTTP נפרדת) - חוסך round-trip שלם לשרת בכל שמירה שכוללת גם מחיקה
+        List<String> hashCodesToDelete = request.getHashCodesToDelete();
+        if (hashCodesToDelete != null && !hashCodesToDelete.isEmpty()) {
+            deleteUserRecipientLinks(user, hashCodesToDelete);
+        }
 
         List<Recipients> incoming = request.getRecipients();
 
@@ -292,35 +301,16 @@ public class RecipientController {
     }
 
 
-    @PostMapping("/delete")
-    @Transactional
-    public ResponseEntity<?> deleteRecipients(
-            @RequestBody DeleteRecipientsRequest request
-    ) {
-
-        User user = userRepository.findByPhone(request.getPhone());
-
-        if (user == null) {
-            return ResponseEntity
-                    .status(HttpStatus.NOT_FOUND)
-                    .body("User not found");
-        }
-
-        stampCurrentUserForHistory(user.getHashCode());
-
-        List<String> hashCodes = request.getHashCodes();
-
-        // מוחקים רק את הקישור (user_recipients) בין המשתמש הזה לנמענים שנבחרו -
-        // לא את שורת ה-Recipients עצמה, כי אותו hashCode (נגזר משם+טלפון) יכול
-        // להיות משותף/מקושר גם למשתמשים אחרים, ומחיקה ישירה הייתה מוחקת להם בטעות.
-        // שאילתה אחת ממוקדת (JOIN + IN) - לא טוענים את כל הקישורים של המשתמש
-        // (יכולים להיות מאות) רק כדי לסנן בזיכרון בשביל כמה שנבחרו למחיקה
+    // מוחקת רק את הקישור (user_recipients) בין המשתמש הזה לנמענים שנבחרו - לא את
+    // שורת ה-Recipients עצמה, כי אותו hashCode (נגזר משם+טלפון+כתובת) יכול להיות
+    // משותף/מקושר גם למשתמשים אחרים, ומחיקה ישירה הייתה מוחקת להם בטעות. שאילתה
+    // אחת ממוקדת (JOIN + IN) - לא טוענים את כל הקישורים של המשתמש (יכולים להיות
+    // מאות) רק כדי לסנן בזיכרון בשביל כמה שנבחרו למחיקה. נקראת מתוך saveRecipients
+    // (מחיקה משולבת בבקשת save)
+    private void deleteUserRecipientLinks(User user, List<String> hashCodes) {
         List<UserRecipients> linksToDelete =
                 userRecipientsRepository.findByUserAndRecipient_HashCodeIn(user, hashCodes);
-
         userRecipientsRepository.deleteAll(linksToDelete);
-
-        return ResponseEntity.ok().build();
     }
 
     // כל ההסטוריה השמורה לנמען ספציפי (recipients_history) - מכל המשתמשות שאי-פעם
@@ -329,15 +319,25 @@ public class RecipientController {
     // כבר יודע לפרש (JSON.parse), ו"מי שינה" גם כשם תצוגה (לא רק הקוד הטכני)
     @SuppressWarnings("unchecked")
     @GetMapping("/{hashCode}/history")
-    public ResponseEntity<?> getRecipientHistory(@PathVariable String hashCode) {
+    public ResponseEntity<?> getRecipientHistory(@PathVariable String hashCode, @RequestParam String phone) {
+        User user = userRepository.findByPhone(phone);
+        if (user == null) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body("User not found");
+        }
+        // בדיקת ההרשאה (רק משתמשת שהנמען הזה בפועל ברשימה שלה) משולבת ישירות בתוך
+        // השאילתה עצמה (EXISTS על user_recipients) במקום קריאה נפרדת לפני - חוסך
+        // round-trip שלם לשרת ה-DB בכל פתיחת היסטוריה. אם אין קישור, השאילתה פשוט
+        // לא מחזירה כלום, בדיוק כמו נמען בלי היסטוריה בכלל - לא חושף למי שאין לו
+        // הרשאה אם ה-hashCode בכלל קיים
         List<Object[]> rows = entityManager.createNativeQuery(
                 "SELECT h.changed_by, h.change_date, h.operation, CAST(h.old_data AS text), " +
                         "COALESCE(NULLIF(u.first_name_man, ''), NULLIF(u.first_name_woman, ''), 'משתמשת לא ידועה') AS changed_by_name " +
                         "FROM recipients_history h " +
                         "LEFT JOIN users u ON u.hash_code = h.changed_by " +
                         "WHERE h.recipient_hash_code = :hashCode " +
+                        "AND EXISTS (SELECT 1 FROM user_recipients ur WHERE ur.user_id = :userHashCode AND ur.recipient_id = :hashCode) " +
                         "ORDER BY h.change_date DESC"
-        ).setParameter("hashCode", hashCode).getResultList();
+        ).setParameter("hashCode", hashCode).setParameter("userHashCode", user.getHashCode()).getResultList();
 
         List<Map<String, Object>> result = new ArrayList<>();
         for (Object[] row : rows) {
@@ -350,18 +350,6 @@ public class RecipientController {
             result.add(entry);
         }
 
-        return ResponseEntity.ok(result);
-    }
-
-    @GetMapping("/_debug/find")
-    public ResponseEntity<?> debugFind() {
-        List<Object[]> rows = entityManager.createNativeQuery(
-                "SELECT hash_code, man, woman, last_name, phone, mail, father_name, mother_name, country, city, street, house_no, belongs_to, prefix, suffix, changed, print, display, address_note, address_note_sources FROM recipients WHERE man = 'יעקב' AND woman = 'חנה' AND last_name = 'לוי'"
-        ).getResultList();
-        List<String> result = new ArrayList<>();
-        for (Object[] row : rows) {
-            result.add(java.util.Arrays.toString(row));
-        }
         return ResponseEntity.ok(result);
     }
 }

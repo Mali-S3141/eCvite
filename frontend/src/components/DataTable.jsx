@@ -42,9 +42,31 @@ const ADDRESS_FIELDS = ['country', 'city', 'neighborhood', 'street', 'houseNo'];
 // שאף עמודה, לא משנה כמה תורחב, לא יכולה לרנדר לתוך השטח הזה בכלל
 const ROW_ICON_GUTTER_PX = 56;
 
+// עיצוב משותף לכפתורי סרגל הכלים העליון (בטל סינון/מיון, יצוא, הוסף שורה, שמור) -
+// כדי שכולם ייראו אחידים בלי להעתיק את אותו אובייקט סגנון בכל כפתור בנפרד
+const TOOLBAR_BUTTON_SX = {
+  borderRadius: 2,
+  textTransform: 'none',
+  fontWeight: 600,
+  bgcolor: '#ffffff',
+  color: '#1e293b',
+  borderColor: '#60a5fa',
+  py: 0.15,
+  px: 1,
+  fontSize: '0.75rem',
+  '&:hover': { bgcolor: '#eff6ff', borderColor: '#60a5fa' },
+};
+
 // תרגום סוג הפעולה מטבלת recipients_history (נקבע ע"י ה-trigger בבסיס הנתונים,
 // TG_OP הסטנדרטי של פוסטגרס) לתצוגה בעברית בחלונית ההסטוריה
 const HISTORY_OPERATION_LABELS = { INSERT: 'יצירה', UPDATE: 'עדכון', DELETE: 'מחיקה' };
+
+// ברירת המחדל לכל קבוצת כפילות היא תמיד "השאר את שתיהן" - גם כשיש בקבוצה שורה
+// חדשה מול נמען קיים עם אותה זהות בדיוק. כדי שזה יעבוד בפועל (ולא ימוזג בשרת
+// לרשומה אחת, כי אותם 7 שדות זהות מייצרים את אותו hash_code) - handleConfirmDuplicates
+// למטה מוסיפה "מלח" (duplicateSalt) לכל שורה חדשה שנבחרה להישאר, שכופה עליה
+// hash שונה בכוונה
+const DUPLICATE_GROUP_DEFAULT_CHOICE = 'both';
 
 // קוראת את "זיכרון המקור" (ר' moveValueToAddressNote) - JSON שנשמר בעמודה נפרדת
 // (addressNoteSources, לא מוצג בטבלה בכלל) ומתאר אילו ערכים בהערת הכתובת הועברו
@@ -162,7 +184,7 @@ function ColumnHeader({
   );
 }
 
-export default function DataTable({ records, loading, onSave, onAutoSave, onSelectionChange, onDeleteRows, initialSelectedIds, onImport, onOpenPrint, columnPreferences, profileMenu, onColumnOrderChange }) {
+export default function DataTable({ records, loading, onSave, onAutoSave, onSelectionChange, onDeleteRows, initialSelectedIds, onImport, onOpenPrint, columnPreferences, profileMenu, onColumnOrderChange, phone }) {
   const [rows, setRows] = useState(records);
   const [selectionModel, setSelectionModel] = useState(initialSelectedIds || []);
   const [sortModel, setSortModel] = useState([]);
@@ -255,12 +277,28 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
     // גורם לעומס שמעכב את הצביעה הטבעית (CSS :hover) של השורה עצמה, בדיוק העיכוב/קפיצה
     // שתוארה. requestAnimationFrame מגביל את החישוב לכל היותר פעם אחת לפריים
     let rafId = null;
+    let latestClientY = 0;
+    // האם העכבר נמצא כרגע מעל שורה אמיתית ב-DOM, או בשוליים הריקים (מחוץ לרינדור
+    // של ה-DataGrid) - נקבע לפי event.target, לא לפי חישוב Y. חשוב כי app-row-hovered
+    // (למטה, ב-getRowClassName) חייב לפעול אך ורק בשוליים: hoveredRow מתעדכן דרך
+    // requestAnimationFrame (מפגר מטבעו כרבע-שנייה אחרי אירועי עכבר אמיתיים), אז אם
+    // הוא היה שולט בצביעה גם כשעומדים ממש על שורה, בתנועה מהירה בין שורות הוא "מפגר"
+    // אחרי ה-hover הטבעי (מיידי, ללא עיכוב בכלל) של הדפדפן - וזה נראה כמו שורה תקועה
+    // שנשארת צבועה רגע אחרי שעוזבים אותה. בתוך שורה אמיתית, ה-hover הטבעי (:hover)
+    // כבר מטפל בצביעה בלי שום מעורבות של ה-state הזה, ולכן בלי שום פיגור אפשרי
+    let latestInGutter = false;
     const handleMouseMove = (event) => {
       if (event.target.closest('[data-row-delete-icon], [data-row-history-icon]')) return;
-      const clientY = event.clientY;
+      // תמיד מעדכן את המיקום העדכני ביותר, גם כשכבר יש פריים ממתין - כדי שהחישוב
+      // בפועל (למטה) יריץ מול מיקום העכבר האמיתי ברגע שהפריים רץ, לא מול המיקום
+      // שהיה כשה-mousemove *הראשון* בפריים הזה תזמן אותו (שהיה נשאר "תקוע" לולא זה)
+      latestClientY = event.clientY;
+      latestInGutter = !event.target.closest('.MuiDataGrid-row');
       if (rafId !== null) return;
       rafId = requestAnimationFrame(() => {
         rafId = null;
+        const clientY = latestClientY;
+        const inGutter = latestInGutter;
         const containerRect = container.getBoundingClientRect();
         const rowEls = container.querySelectorAll('.MuiDataGrid-row');
         let matchedRowEl = null;
@@ -281,8 +319,8 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
         const top = matchedRowRect.top - containerRect.top;
         const height = matchedRowRect.height;
         setHoveredRow((prev) => {
-          if (prev && String(prev.id) === String(id) && prev.top === top && prev.height === height) return prev;
-          return { id, top, height };
+          if (prev && String(prev.id) === String(id) && prev.top === top && prev.height === height && prev.inGutter === inGutter) return prev;
+          return { id, top, height, inGutter };
         });
       });
     };
@@ -348,14 +386,24 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
     return Array.from(byKey.values()).filter((group) => group.length > 1);
   };
 
-  const proceedAfterDuplicates = (rowsToSave) => {
+  // מעביר את מזהי המחיקה ישירות לפונקציית השמירה (onSave) במקום להסתמך על ה-state
+  // הנפרד pendingDeleteHashCodes ב-DashboardPage - כי כשקוראים למחיקה ולשמירה
+  // ברצף באותה קריאה סינכרונית (כמו ב-handleConfirmDuplicates למטה), ה-state ההוא
+  // עוד לא הספיק להתעדכן בזמן ש-handleSave כבר קורא אותו (stale closure) - ref כי
+  // צריך לשרוד גם אם השמירה נדחית דרך חלונית "יש שדות שגויים" (proceedAfterDuplicates
+  // נקרא שוב, בלי extraDeleteIds, מ-handleSaveAnyway/handleFixProblemsNow)
+  const pendingExtraDeleteIdsRef = useRef([]);
+
+  const proceedAfterDuplicates = (rowsToSave, extraDeleteIds = []) => {
+    if (extraDeleteIds.length) pendingExtraDeleteIdsRef.current = extraDeleteIds;
     const problems = findProblemCells(rowsToSave);
     if (problems.length > 0) {
       setPendingProblems(problems);
       setSaveAnywayDialogOpen(true);
       return;
     }
-    onSave(rowsToSave);
+    onSave(rowsToSave, pendingExtraDeleteIdsRef.current);
+    pendingExtraDeleteIdsRef.current = [];
   };
 
   const handleSaveClick = () => {
@@ -374,8 +422,18 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
     let updatedRows = rows;
     const idsToDelete = [];
     duplicateGroups.forEach((group, groupIndex) => {
-      const choice = duplicateChoices[groupIndex] ?? 'both';
-      if (choice === 'both') return;
+      const choice = duplicateChoices[groupIndex] ?? DUPLICATE_GROUP_DEFAULT_CHOICE;
+      if (choice === 'both') {
+        // כל שורה חדשה (עוד לא נשמרה) בקבוצה שנשארת - מקבלת "מלח" ייחודי כדי שה-hash
+        // שלה בשרת יצא שונה בכוונה מהרשומה הקיימת שאיתה היא חולקת את כל שאר השדות,
+        // ולא תתמזג איתה בטעות (ר' Recipients.java generateRowHashCode)
+        group.forEach((row) => {
+          if (row.hashCode) return;
+          const salt = `dup-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+          updatedRows = updatedRows.map((r) => (String(r.id) === String(row.id) ? { ...r, duplicateSalt: salt } : r));
+        });
+        return;
+      }
       group.forEach((row) => {
         if (String(row.id) !== String(choice)) {
           updatedRows = updatedRows.filter((r) => String(r.id) !== String(row.id));
@@ -385,13 +443,23 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
     });
     setDuplicateDialogOpen(false);
     setDuplicateGroups([]);
-    if (idsToDelete.length) {
+    // מעדכנים את ה-state (rows) בכל מקרה שבו updatedRows השתנה - גם כשאין מחיקות
+    // (רק "מלח" נוסף לשורה/שורות שנשארות "שתיהן") - כי אם יש שדות לא תקינים בטבלה,
+    // proceedAfterDuplicates למטה יפתח את חלונית "שדות שגויים" בלי לשמור עדיין, ו"שמור
+    // בכל זאת" (handleSaveAnyway) שולח את ה-state rows הזה בדיוק - בלי העדכון הזה,
+    // המלח היה הולך לאיבוד וה-hash של השורה החדשה היה יוצא זהה לרשומה הקיימת
+    if (updatedRows !== rows) {
       setRows(updatedRows);
-      setSelectionModel((prev) => prev.filter((id) => !idsToDelete.includes(id)));
       onAutoSave(updatedRows);
+    }
+    if (idsToDelete.length) {
+      setSelectionModel((prev) => prev.filter((id) => !idsToDelete.includes(id)));
+      // רושמים גם ב-state המתמשך (pendingDeleteHashCodes ב-DashboardPage), לא רק
+      // מעבירים ל-onSave הזה במפורש - כדי שאם השמירה הנוכחית נכשלת/נדחית (שדות
+      // שגויים וכו') המחיקה עדיין תישלח בפעם הבאה שבאמת שומרים, ולא תלך לאיבוד
       if (onDeleteRows) onDeleteRows(idsToDelete);
     }
-    proceedAfterDuplicates(updatedRows);
+    proceedAfterDuplicates(updatedRows, idsToDelete);
   };
 
   const handleCancelDuplicates = () => {
@@ -402,7 +470,8 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
   // "שמור בכל זאת" - מתעלמים מהשדות הבעייתיים ושומרים את הטבלה כמו שהיא
   const handleSaveAnyway = () => {
     setSaveAnywayDialogOpen(false);
-    onSave(rows);
+    onSave(rows, pendingExtraDeleteIdsRef.current);
+    pendingExtraDeleteIdsRef.current = [];
   };
 
   // "לתקן עכשיו" - נכנסים לתהליך הקפיצה האוטומטית לתיקון השדות, כמו שהיה קודם
@@ -413,6 +482,9 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
     setInputValue('');
     setSortModel([]);
     setProblemQueue(pendingProblems);
+    // לא שומרים עכשיו בכלל (המשתמשת בחרה לתקן קודם) - מזהי המחיקה הממתינים מסבב
+    // כפילויות קודם כבר לא רלוונטיים לניסיון השמירה הבא, שיבדוק כפילויות מחדש בעצמו
+    pendingExtraDeleteIdsRef.current = [];
   };
 
   const handlePrintLabels = () => {
@@ -487,15 +559,21 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
   const [historyDialog, setHistoryDialog] = useState(null); // { row, entries, loading }
 
   const handleOpenHistory = useCallback(async (row) => {
+    // אם ה-phone עוד לא נטען (מרוץ עם טעינת המשתמשת) - לא שולחים בקשה בכלל, כי
+    // השרת דורש אותו לבדיקת ההרשאה ויחזיר שגיאה שהייתה מוצגת כ"אין היסטוריה" בטעות
+    if (!phone) {
+      setHistoryDialog({ row, entries: [], loading: false, error: true });
+      return;
+    }
     setHistoryDialog({ row, entries: [], loading: true });
     try {
-      const response = await api.getRecipientHistory(row.hashCode);
+      const response = await api.getRecipientHistory(row.hashCode, phone);
       setHistoryDialog({ row, entries: response.data, loading: false });
     } catch (err) {
       console.error('לא ניתן היה לטעון את ההסטוריה של הנמען:', err);
-      setHistoryDialog({ row, entries: [], loading: false });
+      setHistoryDialog({ row, entries: [], loading: false, error: true });
     }
-  }, []);
+  }, [phone]);
 
   const handleCloseHistory = () => setHistoryDialog(null);
 
@@ -519,20 +597,12 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
   // אוטומטית בהסטוריה כשזה נשמר, כי זה בעצמו עדכון רגיל מבחינת הטריגר בבסיס הנתונים)
   const handleRestoreFromHistory = (oldDataJson) => {
     if (!historyDialog) return;
-    let oldData;
-    try {
-      oldData = JSON.parse(oldDataJson);
-    } catch {
-      return;
-    }
     // old_data נשמר לפי שמות העמודות האמיתיים בבסיס הנתונים (עם קו תחתון, כמו
     // last_name), אבל השורות בטבלה כאן משתמשות בשמות בסגנון camelCase (lastName) -
-    // צריך להמיר לפני שממזגים, אחרת שדות עם יותר ממילה אחת פשוט לא היו מתעדכנים
-    const camelCased = {};
-    Object.entries(oldData).forEach(([key, value]) => {
-      const camelKey = key.replace(/_([a-z])/g, (_, c) => c.toUpperCase());
-      camelCased[camelKey] = value;
-    });
+    // parseHistoryOldData ממירה ומפרסרת JSON (ר' למעלה) - אותה פונקציה בדיוק
+    // משמשת גם להצגת ההיסטוריה בטבלה, כדי לא לשכפל את לוגיקת ההמרה פעמיים
+    const camelCased = parseHistoryOldData(oldDataJson);
+    if (!camelCased) return;
     // לא דורסים את הזהות של הנמען עצמו (hashCode) - רק את שאר הנתונים שלו
     const { hashCode, id, ...restoredFields } = camelCased;
     const targetId = historyDialog.row.id;
@@ -571,6 +641,28 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
       }
     }
   }, [onAutoSave, apiRef]);
+
+  // handlers משותפים ל-input בתוך תא טבלה (renderAddressCell/renderTextCell) - בלי
+  // stopPropagation ב-onKeyDown ה-DataGrid תופס את מקש הרווח כקיצור מקלדת שלו (למשל
+  // גלילה/בחירה) במקום לתת לו סתם להקליד תו רווח רגיל. Enter מבצע blur על השדה - זה
+  // מפעיל את בדיקת ה-focusout הקיימת, שאם השדה תקין מסירה אותו מתור התיקונים
+  // וקופצת אוטומטית לתא הבעייתי הבא
+  const createCellInputHandlers = useCallback((id, field) => ({
+    onChange: (event) => updateCellValue(id, field, event.target.value),
+    onClick: (event) => event.stopPropagation(),
+    onKeyDown: (event) => {
+      if (event.key === ' ') {
+        event.stopPropagation();
+        return;
+      }
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        event.stopPropagation();
+        blurredViaEnterRef.current = true;
+        event.currentTarget.blur();
+      }
+    },
+  }), [updateCellValue]);
 
   // מעבירה את הערך מתא בעמודת כתובת (כשהוא לא מתאים) לעמודת "הערת כתובת" -
   // ומרוקנת את התא המקורי. אם כבר יש תוכן בהערת הכתובת, משרשרת אליו (מופרד ב-";")
@@ -673,24 +765,7 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
       >
         <input
           value={value ?? ''}
-          onChange={(event) => updateCellValue(id, field, event.target.value)}
-          onClick={(event) => event.stopPropagation()}
-          // בלי stopPropagation כאן ה-DataGrid תופס את מקש הרווח כקיצור מקלדת שלו
-          // (למשל גלילה/בחירה) במקום לתת לו סתם להקליד תו רווח רגיל בתוך השדה.
-          // Enter מבצע blur על השדה - זה מפעיל את בדיקת ה-focusout הקיימת, שאם השדה
-          // תקין מסירה אותו מתור התיקונים וקופצת אוטומטית לתא הבעייתי הבא
-          onKeyDown={(event) => {
-            if (event.key === ' ') {
-              event.stopPropagation();
-              return;
-            }
-            if (event.key === 'Enter') {
-              event.preventDefault();
-              event.stopPropagation();
-              blurredViaEnterRef.current = true;
-              event.currentTarget.blur();
-            }
-          }}
+          {...createCellInputHandlers(id, field)}
           style={{
             flex: 1,
             minWidth: 0,
@@ -703,7 +778,7 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
         />
       </Box>
     );
-  }, [updateCellValue]);
+  }, [createCellInputHandlers]);
 
   // תא טקסט חי - קלט חופשי לגמרי תמיד, ואם יש pickListField (עמודות קידומת/סיום/
   // שייך ל) גם חץ קטן לצידו שפותח Menu לבחירה מהערכים הקיימים באותה עמודה. שתי
@@ -762,24 +837,7 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
         <Box ref={boxRef} sx={{ display: 'flex', alignItems: 'center', width: '100%', height: '100%', px: 1, position: 'relative' }}>
           <input
             value={value ?? ''}
-            onChange={(event) => updateCellValue(id, field, event.target.value)}
-            onClick={(event) => event.stopPropagation()}
-            // בלי stopPropagation כאן ה-DataGrid תופס את מקש הרווח כקיצור מקלדת שלו
-            // (למשל גלילה/בחירה) במקום לתת לו סתם להקליד תו רווח רגיל בתוך השדה.
-            // Enter מבצע blur על השדה - זה מפעיל את בדיקת ה-focusout הקיימת, שאם השדה
-            // תקין מסירה אותו מתור התיקונים וקופצת אוטומטית לתא הבעייתי הבא
-            onKeyDown={(event) => {
-              if (event.key === ' ') {
-                event.stopPropagation();
-                return;
-              }
-              if (event.key === 'Enter') {
-                event.preventDefault();
-                event.stopPropagation();
-                blurredViaEnterRef.current = true;
-                event.currentTarget.blur();
-              }
-            }}
+            {...createCellInputHandlers(id, field)}
             // לחיצה/כניסה לתא בעמודות הבחירה פותחת את רשימת הערכים הקיימים, בלי צורך
             // ללחוץ בנפרד על חץ - אפשר עדיין להקליד חופשי במקביל. כניסה לעריכה תמיד
             // חושפת את הטקסט המלא (גם אם "שייך ל" מכווץ כרגע), ויציאה ממנה מכווצת שוב
@@ -915,7 +973,7 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
     // אמיתי עם fiber משלו - הכרחי כי יש כאן hooks (useState/useRef) בפנים. בלעדי זה
     // ריאקט "מבלבל" בין hooks של תאים שונים (בדיוק השגיאה "Rendered more hooks...")
     return (params) => <TextCell {...params} />;
-  }, [updateCellValue]);
+  }, [updateCellValue, createCellInputHandlers]);
 
   // תא בוליאני חי (עמודת "הדפסה") - checkbox רגיל, בלי תלות במצב עריכה בכלל
   const renderBooleanCell = useCallback((params) => {
@@ -1156,12 +1214,19 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
   const historyVisibleFieldDefs = useMemo(() => {
     return displayFieldDefs.filter((f) => {
       if (f.technicalName === 'print') return true;
+      // גם הערך הנוכחי של הנמען (לא רק הערכים הישנים ששמורים בהיסטוריה) - אחרת עמודה
+      // שהתמלאה לראשונה עכשיו (למשל הוספת שם אישה שלא הייתה קודם) מוסתרת לגמרי, כי
+      // בכל שינוי קודם היא הייתה ריקה - זה בדיוק המצב לפני שהתווסף אליה ערך בפעם הראשונה
+      const currentValue = historyDialog?.row?.[f.technicalName];
+      if (currentValue !== null && currentValue !== undefined && String(currentValue).trim() !== '') {
+        return true;
+      }
       return historyOldValuesList.some((values) => {
         const value = values?.[f.technicalName];
         return value !== null && value !== undefined && String(value).trim() !== '';
       });
     });
-  }, [displayFieldDefs, historyOldValuesList]);
+  }, [displayFieldDefs, historyOldValuesList, historyDialog]);
 
   // חץ המיון בכותרת: אם העמודה כבר המיון הראשי - מחזור רגיל (עולה -> יורד -> בטל).
   // אחרת, אותה לוגיקה בדיוק כמו בחירה מתיבת "מיון" (ר' handleAddSortField למטה) -
@@ -1558,19 +1623,7 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
               variant="outlined"
               size="small"
               onClick={handleFullReset}
-              sx={{
-                borderRadius: 2,
-                textTransform: 'none',
-                fontWeight: 600,
-                bgcolor: '#ffffff',
-                color: '#1e293b',
-                borderColor: '#60a5fa',
-                whiteSpace: 'nowrap',
-                py: 0.15,
-                px: 1,
-                fontSize: '0.75rem',
-                '&:hover': { bgcolor: '#eff6ff', borderColor: '#60a5fa' },
-              }}
+              sx={{ ...TOOLBAR_BUTTON_SX, whiteSpace: 'nowrap' }}
             >
               בטל סינון/מיון
             </Button>
@@ -1640,18 +1693,7 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
             size="small"
             onClick={(event) => setExportMenuAnchor(event.currentTarget)}
             endIcon={<ArrowDropDownIcon />}
-            sx={{
-              borderRadius: 2,
-              textTransform: 'none',
-              fontWeight: 600,
-              bgcolor: '#ffffff',
-              color: '#1e293b',
-              borderColor: '#60a5fa',
-              py: 0.15,
-              px: 1,
-              fontSize: '0.75rem',
-              '&:hover': { bgcolor: '#eff6ff', borderColor: '#60a5fa' },
-            }}
+            sx={TOOLBAR_BUTTON_SX}
           >
             יצוא
           </Button>
@@ -1660,19 +1702,7 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
             variant="outlined"
             size="small"
             onClick={handleAddRow}
-            sx={{
-              borderRadius: 2,
-              textTransform: 'none',
-              fontWeight: 600,
-              bgcolor: '#ffffff',
-              color: '#1e293b',
-              borderColor: '#60a5fa',
-              whiteSpace: 'nowrap',
-              py: 0.15,
-              px: 1,
-              fontSize: '0.75rem',
-              '&:hover': { bgcolor: '#eff6ff', borderColor: '#60a5fa' },
-            }}
+            sx={{ ...TOOLBAR_BUTTON_SX, whiteSpace: 'nowrap' }}
           >
             הוסף שורה
           </Button>
@@ -1680,19 +1710,7 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
             variant="outlined"
             size="small"
             onClick={handleSaveClick}
-            sx={{
-              borderRadius: 2,
-              textTransform: 'none',
-              fontWeight: 600,
-              bgcolor: '#ffffff',
-              color: '#1e293b',
-              borderColor: '#60a5fa',
-              whiteSpace: 'nowrap',
-              py: 0.15,
-              px: 1,
-              fontSize: '0.75rem',
-              '&:hover': { bgcolor: '#eff6ff', borderColor: '#60a5fa' },
-            }}
+            sx={{ ...TOOLBAR_BUTTON_SX, whiteSpace: 'nowrap' }}
           >
             שמור את כל המוזמנים
           </Button>
@@ -1721,7 +1739,7 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
         // השמורים מחוץ לתחום הרינדור של הטבלה - שם ה-hover הטבעי (CSS) לא עובד כי
         // העכבר לא באמת מעל אלמנט השורה. משתמשת ב-hoveredRow (שנשאר מדויק גם כשהעכבר
         // עובר לאייקון, ר' handleMouseMove) במקום להסתמך רק על :hover
-        getRowClassName={(params) => (String(params.id) === String(hoveredRow?.id) ? 'app-row-hovered' : '')}
+        getRowClassName={(params) => (hoveredRow?.inGutter && String(params.id) === String(hoveredRow?.id) ? 'app-row-hovered' : '')}
         getCellClassName={(params) => {
           // התא שעליו נלחץ קליק ימני (בזמן שתפריט "העבר להערת כתובת" פתוח) - מודגש
           // כדי שיהיה ברור על איזה ערך מדובר. יורד אוטומטית כשהתפריט נסגר (contextMenu
@@ -1773,22 +1791,21 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
           '& .MuiDataGrid-cell:focus, & .MuiDataGrid-cell:focus-within': {
             outline: 'none',
           },
-          // ל-DataGrid יש שני מנגנוני hover נפרדים: :hover טבעי (מיידי, תמיד מדויק
-          // למיקום העכבר בפועל) ומנגנון פנימי מבוסס React state (מחלקת Mui-hovered,
-          // ר' GridRow.js) שמתעדכן רק אחרי רינדור - מפגר קצת אחרי העכבר בתנועה מהירה,
-          // ונראה כמו "פס" נוסף שרודף. :not(:hover) מנטרל אותו במפורש רק כשהוא כבר
-          // לא תואם למצב ה-hover האמיתי (כלומר בדיוק ה"פס הרודף" המיותר) - בלי להתנגש
-          // אף פעם עם הכלל של :hover עצמו, כי שני הכללים מוציאים זה את זה לגמרי
+          // ל-DataGrid יש כלל hover פנימי משלו (theme.palette.action.hover, אפור -
+          // ר' GridRootStyles.js: '&:hover, &.Mui-hovered') שמתחרה עם הכללים שלנו על
+          // אותה שורה בדיוק. !important מבטיח שהכלל שלנו תמיד מנצח, בלי תלות בסדר
+          // טעינה/ספציפיות עדינה - זה בדיוק מה שגרם ל"שורה תקועה" רגע אחרי שעוזבים
+          // אותה (הכלל הפנימי של MUI "זוכה" שם לרגע במקומנו)
           '& .MuiDataGrid-row:hover': {
-            backgroundColor: '#eff6ff',
+            backgroundColor: '#eff6ff !important',
           },
-          '& .MuiDataGrid-row.Mui-hovered:not(:hover)': {
-            backgroundColor: 'transparent',
+          '& .MuiDataGrid-row.Mui-hovered:not(:hover):not(.app-row-hovered):not(.Mui-selected)': {
+            backgroundColor: 'transparent !important',
           },
           // כשהעכבר על אייקוני המחיקה/הסטוריה עצמם (בשוליים, מחוץ לתחום השורה) - ר'
           // getRowClassName למעלה
           '& .MuiDataGrid-row.app-row-hovered': {
-            backgroundColor: '#eff6ff',
+            backgroundColor: '#eff6ff !important',
           },
           '& .MuiDataGrid-footerContainer': {
             borderTop: '2px solid #e2e8f0',
@@ -2032,10 +2049,8 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
           לזהות - מציגים את השורות המתנגשות זו מול זו (בדיוק כמו "כבר קיים קובץ בשם הזה"
           בהעתקת קבצים במחשב) ונותנים לבחור: להשאיר את שתיהן, או לבחור איזו מהן להשאיר */}
       <Dialog open={duplicateDialogOpen} onClose={handleCancelDuplicates} maxWidth="lg" fullWidth>
-        <DialogTitle>
-          <Typography variant="subtitle1" sx={{ fontWeight: 700, letterSpacing: '-0.01em', color: '#0f172a', fontFamily: '"Rubik", "Segoe UI", Arial, sans-serif' }}>
-            נמצאו שורות זהות
-          </Typography>
+        <DialogTitle sx={{ fontWeight: 700, letterSpacing: '-0.01em', color: '#0f172a', fontFamily: '"Rubik", "Segoe UI", Arial, sans-serif' }}>
+          נמצאו שורות זהות
         </DialogTitle>
         <DialogContent>
           <DialogContentText sx={{ mb: 2, fontSize: '0.85rem', color: '#64748b' }}>
@@ -2049,6 +2064,7 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
                 return value !== null && value !== undefined && String(value).trim() !== '';
               });
             });
+            const defaultChoice = DUPLICATE_GROUP_DEFAULT_CHOICE;
             return (
               <Box key={groupIndex} sx={{ mb: 3, border: '1px solid #e2e8f0', borderRadius: 2, p: 1.5 }}>
                 <TableContainer>
@@ -2074,7 +2090,7 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
                             <input
                               type="radio"
                               name={`duplicate-group-${groupIndex}`}
-                              checked={(duplicateChoices[groupIndex] ?? 'both') === String(row.id)}
+                              checked={(duplicateChoices[groupIndex] ?? defaultChoice) === String(row.id)}
                               onChange={() => setDuplicateChoices((prev) => ({ ...prev, [groupIndex]: String(row.id) }))}
                             />
                           </TableCell>
@@ -2090,7 +2106,7 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
                           <input
                             type="radio"
                             name={`duplicate-group-${groupIndex}`}
-                            checked={(duplicateChoices[groupIndex] ?? 'both') === 'both'}
+                            checked={(duplicateChoices[groupIndex] ?? defaultChoice) === 'both'}
                             onChange={() => setDuplicateChoices((prev) => ({ ...prev, [groupIndex]: 'both' }))}
                           />
                         </TableCell>
@@ -2212,6 +2228,8 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
                 </TableBody>
               </Table>
             </TableContainer>
+          ) : historyDialog?.error ? (
+            <DialogContentText sx={{ color: '#dc2626' }}>אירעה שגיאה בטעינת ההיסטוריה. נסו לרענן את הדף ולנסות שוב.</DialogContentText>
           ) : (
             <DialogContentText>לא נמצאה היסטוריה עבור נמען זה.</DialogContentText>
           )}
@@ -2227,25 +2245,25 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
         <Box
           sx={{
             position: 'absolute',
-            top: -18,
+            top: 0,
             left: '50%',
             transform: 'translateX(-50%)',
             zIndex: 10,
             display: 'flex',
             alignItems: 'center',
-            gap: 1.5,
-            px: 2,
-            py: 1,
+            gap: 1,
+            px: 1.25,
+            py: 0.4,
             bgcolor: '#ffffff',
             borderRadius: 999,
             border: '1px solid #e6e8ec',
             boxShadow: '0 8px 24px rgba(15, 23, 42, 0.12)',
           }}
         >
-          <IconButton size="small" onClick={() => { setSelectionModel([]); onSelectionChange([]); }}>
-            <CloseIcon fontSize="small" />
+          <IconButton size="small" onClick={() => { setSelectionModel([]); onSelectionChange([]); }} sx={{ p: 0.25 }}>
+            <CloseIcon sx={{ fontSize: '1rem' }} />
           </IconButton>
-          <Typography variant="body2" sx={{ fontWeight: 600, color: '#475569', whiteSpace: 'nowrap' }}>
+          <Typography sx={{ fontWeight: 600, color: '#475569', whiteSpace: 'nowrap', fontSize: '0.75rem' }}>
             {selectionModel.length} נבחרו
           </Typography>
           <Button
@@ -2253,7 +2271,7 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
             color="error"
             size="small"
             onClick={handleDeleteRows}
-            sx={{ borderRadius: 999, textTransform: 'none', fontWeight: 600, whiteSpace: 'nowrap' }}
+            sx={{ borderRadius: 999, textTransform: 'none', fontWeight: 600, whiteSpace: 'nowrap', py: 0.15, px: 1, fontSize: '0.75rem' }}
           >
             מחק שורות
           </Button>
