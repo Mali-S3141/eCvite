@@ -77,7 +77,6 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
   const [secondarySortFields, setSecondarySortFields] = useState([]); // תת-מיון: שרשרת עמודות לשבירת שוויון, לפי בחירת המשתמשת
   const [columnOrder, setColumnOrder] = useState(null); // null = סדר ברירת המחדל (defaultOrder) - אחרת מערך שמות שדות בסדר שהמשתמשת גררה
   const [columnWidths, setColumnWidths] = useState({}); // technicalName -> רוחב בפיקסלים, רק לעמודות שהורחבו/צומצמו ידנית
-  const [dragArmedField, setDragArmedField] = useState(null); // איזו עמודה "משוחררת" לגרירה אחרי דאבל-קליק על הכותרת שלה
   const dragTrackingRef = useRef(null); // { field, startX, startY, moved } בזמן גרירת עמודה לסידור מחדש
   const resizingRef = useRef(null); // { field, startX, startWidth } בזמן גרירת קו ההרחבה
   const onColumnOrderChangeRef = useRef(onColumnOrderChange);
@@ -757,13 +756,14 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
   // חץ המיון בכותרת: אם העמודה כבר המיון הראשי - מחזור רגיל (עולה -> יורד -> בטל).
   // אחרת, אותה לוגיקה בדיוק כמו בחירה מתיבת "מיון" (ר' handleAddSortField למטה) -
   // אם אין עדיין מיון ראשי זה הופך להיות הוא, אחרת מצטרף כתת-מיון (שובר שוויון)
-  const handleHeaderSortClick = (field) => {
-    if (sortModel[0]?.field === field) {
-      setSortModel(sortModel[0].sort === 'asc' ? [{ field, sort: 'desc' }] : []);
-      return;
-    }
-    setSortModel([{ field, sort: 'asc' }]);
-  };
+  const handleHeaderSortClick = useCallback((field) => {
+    setSortModel((currentSortModel) => {
+      if (currentSortModel[0]?.field === field) {
+        return currentSortModel[0].sort === 'asc' ? [{ field, sort: 'desc' }] : [];
+      }
+      return [{ field, sort: 'asc' }];
+    });
+  }, []);
 
   // גרירת עמודה לסידור מחדש - תנועה אחת רציפה (לוחצים, גוררים בלי לשחרר, משחררים
   // ביעד), בלי שלב "בחירה" נפרד קודם. לחיצה בלי תזוזה ממשית (מעל סף קטן) לא נחשבת
@@ -806,7 +806,6 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
         const dy = moveEvent.clientY - tracking.startY;
         if (Math.abs(dx) > DRAG_MOVE_THRESHOLD_PX || Math.abs(dy) > DRAG_MOVE_THRESHOLD_PX) {
           tracking.moved = true;
-          setDragArmedField(field);
         }
       };
 
@@ -815,7 +814,6 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
         document.removeEventListener('mouseup', handleMouseUp);
         const tracking = dragTrackingRef.current;
         dragTrackingRef.current = null;
-        setDragArmedField(null);
         if (!tracking || !tracking.moved) return; // לחיצה רגילה, לא גרירה בפועל - לא מזיזים כלום
 
         const sourceField = tracking.field;
@@ -1003,7 +1001,7 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
     };
 
     return [addFirstRowColumn, printSelectionColumn, ...dynamicColumns, ...systemColumns];
-  }, [handleAddRow, orderedFieldDefs, renderAddressCell, renderBooleanCell, renderRowPrintSelection, renderTextCell, secondarySortFields]);
+  }, [columnWidths, displayFieldDefs, handleAddRow, handleHeaderSortClick, renderAddressCell, renderBooleanCell, renderRowPrintSelection, renderTextCell, secondarySortFields]);
 
   const handleAddSecondarySort = (field) => {
     if (!field || secondarySortFields.includes(field)) return;
