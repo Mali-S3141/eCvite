@@ -6,7 +6,6 @@ import LogoutOutlinedIcon from '@mui/icons-material/LogoutOutlined';
 import DataTable from '../components/DataTable';
 import api from '../services/api';
 import PrintModal from '../components/PrintModal'; // ייבוא המודאל החדש
-import { buildIdentityKey, mergeBelongsToValues } from '../utils/recipientIdentity';
 import { parseColumnPreferences } from '../utils/columnPreferences';
 
 const DEFAULT_PRINTABLE_FIELDS = ['prefix', 'man', 'woman', 'lastName', 'suffix', 'street', 'houseNo', 'city', 'country'];
@@ -110,11 +109,9 @@ function normalizePendingDeletedHashCodes(phone, pendingIds, rowsFromServer) {
     [...pendingIds].filter((id) => serverIds.has(id) && !localIds.has(id))
   );
 
-  if (activeIds.size >= rowsFromServer.length) {
-    clearPendingDeletedHashCodes(phone);
-    return new Set();
-  }
-
+  // Keep every deletion that is still present on the server and absent locally.
+  // This must also work when all server rows were deleted locally; otherwise a
+  // refresh would restore every row before the user presses Save.
   if (activeIds.size !== pendingIds.size) {
     if (activeIds.size) {
       savePendingDeletedHashCodes(phone, activeIds);
