@@ -186,20 +186,6 @@ export default function DashboardPage() {
     }
 
     try {
-      // מוחקים בשרת קודם, לפני השמירה - לא אחריה. אם המחיקה הייתה רצה אחרי השמירה,
-      // נמען שנמחק ואז יובא/נוסף מחדש עם אותה זהות (שם+טלפון+כתובת) היה מקבל hash
-      // זהה לנמען הישן שעדיין מקושר אליך באותו רגע (המחיקה עוד לא רצה) - והמחיקה
-      // שרצה רק אחר כך הייתה מנתקת בטעות גם את מה שכרגע נשמר
-      if (pendingDeleteHashCodes.length > 0) {
-        try {
-          await api.deleteRecipients(user.phone, pendingDeleteHashCodes);
-          setPendingDeleteHashCodes([]);
-        } catch (deleteErr) {
-          console.error('❌ שגיאה במחיקה מהבקאנד:', deleteErr);
-          setError('לא ניתן היה למחוק חלק מהשורות מהשרת.');
-        }
-      }
-
       console.log("2. שולח לבקאנד:", updatedRows);
 
       // hashCode כן נשלח (רק id המקומי-לתצוגה מוסר) - שורה עם hashCode היא נמען שכבר
