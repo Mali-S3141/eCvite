@@ -7,7 +7,6 @@ import { useNavigate } from 'react-router-dom';
 import DataTable from '../components/DataTable';
 import api from '../services/api';
 import PrintModal from '../components/PrintModal';
-import { buildIdentityKey, mergeBelongsToValues } from '../utils/recipientIdentity';
 import { parseColumnPreferences } from '../utils/columnPreferences';
 
 const DEFAULT_PRINTABLE_FIELDS = ['prefix', 'man', 'woman', 'lastName', 'suffix', 'street', 'houseNo', 'city', 'country'];
@@ -400,9 +399,9 @@ export default function DashboardPage() {
     try {
       console.log("2. שולח לבקאנד:", updatedRows);
 
-      const cleanRows = updatedRows.map(
-          ({ id, hashCode, printFields, ...rest }) => rest
-      );
+      // Keep hashCode for persisted rows: it is the stable database identity used
+      // by the backend to update the intended recipient even if name/address changes.
+      const cleanRows = updatedRows.map(({ id, printFields, ...rest }) => rest);
 
       console.log("2. שולח לבקאנד אחרי ניקוי:", cleanRows);
 
@@ -412,17 +411,17 @@ export default function DashboardPage() {
         recipients: cleanRows
       });
 
-      const response = await api.saveRecords(
-          user.phone,
-          cleanRows
-      );
-
       const hashCodesToDelete = [...pendingDeletedHashCodes.current];
       if (hashCodesToDelete.length) {
         await api.deleteRecipients(user.phone, hashCodesToDelete);
         pendingDeletedHashCodes.current.clear();
         clearPendingDeletedHashCodes(user.phone);
       }
+
+      const response = await api.saveRecords(
+          user.phone,
+          cleanRows
+      );
 
 
 
