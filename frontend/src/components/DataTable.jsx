@@ -3,6 +3,8 @@ import { Box,Button,Paper,Stack,Typography,TextField,Chip,Menu,MenuItem,IconButt
 import SwapHorizIcon from '@mui/icons-material/SwapHoriz';
 import AddIcon from '@mui/icons-material/Add';
 import ArrowDropDownIcon from '@mui/icons-material/ArrowDropDown';
+import ArrowUpwardIcon from '@mui/icons-material/ArrowUpward';
+import ArrowDownwardIcon from '@mui/icons-material/ArrowDownward';
 import CloseIcon from '@mui/icons-material/Close';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import { DataGrid, useGridApiRef } from '@mui/x-data-grid';
@@ -61,7 +63,48 @@ function createTextSortComparator(field, secondaryFields) {
   };
 }
 
-export default function DataTable({ records, loading, onSave, onAutoSave, onSelectionChange, onDeleteRows, initialSelectedIds, onImport, onOpenPrint, onActivityFailure }) {
+function ColumnHeader({ headerName, field, sortDirection, onSortClick, isDragArmed }) {
+  return (
+    <Box sx={{ display: 'flex', alignItems: 'center', width: '100%', height: '100%', pr: '24px' }}>
+      <Typography
+        noWrap
+        sx={{
+          fontWeight: 700,
+          color: '#4b5563',
+          cursor: isDragArmed ? 'grabbing' : 'grab',
+          bgcolor: isDragArmed ? '#eff6ff' : 'transparent',
+          borderRadius: 1,
+          px: 0.5,
+          flex: 1,
+          minWidth: 0,
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+        }}
+      >
+        {headerName}
+      </Typography>
+      <IconButton
+        size="small"
+        data-sort-icon="true"
+        onClick={(event) => {
+          event.stopPropagation();
+          onSortClick(field);
+        }}
+        sx={{ p: 0.25, flexShrink: 0 }}
+      >
+        {sortDirection === 'asc' ? (
+          <ArrowUpwardIcon sx={{ fontSize: 14 }} />
+        ) : sortDirection === 'desc' ? (
+          <ArrowDownwardIcon sx={{ fontSize: 14 }} />
+        ) : (
+          <ArrowUpwardIcon sx={{ fontSize: 14, opacity: 0.25 }} />
+        )}
+      </IconButton>
+    </Box>
+  );
+}
+
+export default function DataTable({ records, loading, onSave, onAutoSave, onSelectionChange, onDeleteRows, initialSelectedIds, onImport, onOpenPrint, onActivityFailure, columnPreferences, profileMenu, onColumnOrderChange }) {
   const [rows, setRows] = useState(records);
   const [selectionModel, setSelectionModel] = useState(initialSelectedIds || []);
   const [sortModel, setSortModel] = useState([]);
@@ -755,15 +798,21 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
   }, [columnOrder, fieldDefs, orderedFieldDefs]);
 
   // חץ המיון בכותרת: אם העמודה כבר המיון הראשי - מחזור רגיל (עולה -> יורד -> בטל).
-  // אחרת, אותה לוגיקה בדיוק כמו בחירה מתיבת "מיון" (ר' handleAddSortField למטה) -
+  // אחרת, אם כבר יש מיון ראשי, העמודה מצטרפת כתת-מיון (שובר שוויון).
   // אם אין עדיין מיון ראשי זה הופך להיות הוא, אחרת מצטרף כתת-מיון (שובר שוויון)
-  const handleHeaderSortClick = (field) => {
+  const handleHeaderSortClick = useCallback((field) => {
     if (sortModel[0]?.field === field) {
       setSortModel(sortModel[0].sort === 'asc' ? [{ field, sort: 'desc' }] : []);
       return;
     }
-    handleAddSortField(field);
-  };
+    if (sortModel.length === 0) {
+      setSortModel([{ field, sort: 'asc' }]);
+      return;
+    }
+    if (!secondarySortFields.includes(field)) {
+      setSecondarySortFields((currentSecondaryFields) => [...currentSecondaryFields, field]);
+    }
+  }, [secondarySortFields, sortModel]);
 
   // גרירת עמודה לסידור מחדש - תנועה אחת רציפה (לוחצים, גוררים בלי לשחרר, משחררים
   // ביעד), בלי שלב "בחירה" נפרד קודם. לחיצה בלי תזוזה ממשית (מעל סף קטן) לא נחשבת
@@ -921,6 +970,7 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
   const columns = useMemo(() => {
     const dynamicColumns = displayFieldDefs.map((f) => {
       const isBoolean = f.technicalName === 'print';
+      const customWidth = columnWidths[f.technicalName];
       const pickListField = ['prefix', 'suffix', 'belongsTo'].includes(f.technicalName)
         ? f.technicalName
         : null;
@@ -950,7 +1000,7 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
         renderHeader: () => (
           <ColumnHeader
             field={f.technicalName}
-            headerName={headerName}
+            headerName={f.isRequired ? `${f.displayName} *` : f.displayName}
             sortDirection={sortModel[0]?.field === f.technicalName ? sortModel[0].sort : null}
             onSortClick={handleHeaderSortClick}
             isDragArmed={dragArmedField === f.technicalName}
@@ -1003,7 +1053,7 @@ export default function DataTable({ records, loading, onSave, onAutoSave, onSele
     };
 
     return [addFirstRowColumn, printSelectionColumn, ...dynamicColumns, ...systemColumns];
-  }, [handleAddRow, orderedFieldDefs, renderAddressCell, renderBooleanCell, renderRowPrintSelection, renderTextCell, secondarySortFields]);
+  }, [columnWidths, displayFieldDefs, dragArmedField, handleAddRow, handleHeaderSortClick, renderAddressCell, renderBooleanCell, renderRowPrintSelection, renderTextCell, secondarySortFields, sortModel]);
 
   const handleAddSecondarySort = (field) => {
     if (!field || secondarySortFields.includes(field)) return;
